@@ -1,0 +1,333 @@
+@startuml Diagrama de Secuencia - Administrador
+
+title Diagrama de Secuencia - Actor: Administrador\nSistema SaaS de Control de Inventario - Technology Cuchito
+
+actor "Administrador" as Admin
+participant "Interfaz Web\n(Frontend)" as UI
+participant "API REST\n(Backend)" as API
+participant "Controlador\nAutenticación" as AuthCtrl
+participant "Controlador\nUsuarios" as UserCtrl
+participant "Controlador\nProductos" as ProdCtrl
+participant "Controlador\nAlmacenes" as AlmCtrl
+participant "Controlador\nInventario" as InvCtrl
+participant "Controlador\nReportes" as RepCtrl
+database "Base de Datos\nPostgreSQL" as DB
+
+== Caso de Uso 1: Iniciar Sesión ==
+
+Admin -> UI: 1. Ingresa credenciales\n(usuario, contraseña)
+activate UI
+
+UI -> API: 2. POST /api/auth/login\n{username, password}
+activate API
+
+API -> AuthCtrl: 3. login(username, password)
+activate AuthCtrl
+
+AuthCtrl -> DB: 4. SELECT * FROM usuarios\nWHERE username = ?
+activate DB
+DB --> AuthCtrl: 5. Datos del usuario
+deactivate DB
+
+AuthCtrl -> AuthCtrl: 6. Verificar contraseña\n(bcrypt.compare)
+
+alt Contraseña válida
+    AuthCtrl -> AuthCtrl: 7. Generar token JWT\n(usuario, rol, permisos)
+    AuthCtrl --> API: 8. {token, usuario, rol}
+    deactivate AuthCtrl
+    API --> UI: 9. 200 OK\n{token, datos_usuario}
+    deactivate API
+    UI -> UI: 10. Almacenar token\n(localStorage)
+    UI --> Admin: 11. Redirigir a Dashboard
+    deactivate UI
+else Contraseña inválida
+    AuthCtrl --> API: Error: Credenciales inválidas
+    API --> UI: 401 Unauthorized
+    UI --> Admin: Mostrar error
+end
+
+== Caso de Uso 2: Gestionar Usuarios (Crear Usuario) ==
+
+Admin -> UI: 1. Accede a "Gestión de Usuarios"
+activate UI
+
+UI -> API: 2. GET /api/usuarios\n(Authorization: Bearer token)
+activate API
+
+API -> UserCtrl: 3. listarUsuarios()
+activate UserCtrl
+
+UserCtrl -> DB: 4. SELECT * FROM usuarios\nWHERE activo = true
+activate DB
+DB --> UserCtrl: 5. Lista de usuarios
+deactivate DB
+
+UserCtrl --> API: 6. Array usuarios
+deactivate UserCtrl
+API --> UI: 7. 200 OK {usuarios[]}
+deactivate API
+
+UI --> Admin: 8. Mostrar lista de usuarios
+deactivate UI
+
+Admin -> UI: 9. Click "Nuevo Usuario"\nLlena formulario
+activate UI
+
+UI -> UI: 10. Validar datos del formulario
+
+UI -> API: 11. POST /api/usuarios\n{nombre, email, username,\npassword, rol}
+activate API
+
+API -> UserCtrl: 12. crearUsuario(datos)
+activate UserCtrl
+
+UserCtrl -> UserCtrl: 13. Validar datos\n(email único, password seguro)
+
+UserCtrl -> UserCtrl: 14. Hash de contraseña\n(bcrypt.hash)
+
+UserCtrl -> DB: 15. INSERT INTO usuarios\n(nombre, email, username,\npassword_hash, rol)
+activate DB
+DB --> UserCtrl: 16. ID del nuevo usuario
+deactivate DB
+
+UserCtrl --> API: 17. Usuario creado
+deactivate UserCtrl
+
+API --> UI: 18. 201 Created\n{usuario_creado}
+deactivate API
+
+UI --> Admin: 19. Mensaje: "Usuario creado\nexitosamente"
+deactivate UI
+
+== Caso de Uso 3: Registrar Producto ==
+
+Admin -> UI: 1. Accede a "Gestión de Productos"
+activate UI
+
+UI -> UI: 2. Click "Nuevo Producto"
+
+Admin -> UI: 3. Llena formulario\n(código, nombre, categoría,\nmarca, precio, descripción)
+
+UI -> UI: 4. Validar formulario
+
+UI -> API: 5. POST /api/productos\n{datos_producto}
+activate API
+
+API -> ProdCtrl: 6. crearProducto(datos)
+activate ProdCtrl
+
+ProdCtrl -> ProdCtrl: 7. Validar datos\n(código único, precios válidos)
+
+ProdCtrl -> DB: 8. SELECT * FROM productos\nWHERE codigo = ?
+activate DB
+DB --> ProdCtrl: 9. Verificar si existe
+deactivate DB
+
+alt Código no existe
+    ProdCtrl -> DB: 10. INSERT INTO productos\n(codigo, nombre, categoria,\nmarca, precio_compra,\nprecio_venta, descripcion)
+    activate DB
+    DB --> ProdCtrl: 11. ID del producto
+    deactivate DB
+    
+    ProdCtrl --> API: 12. Producto creado
+    deactivate ProdCtrl
+    API --> UI: 13. 201 Created\n{producto}
+    deactivate API
+    UI --> Admin: 14. "Producto registrado\nexitosamente"
+    deactivate UI
+else Código ya existe
+    ProdCtrl --> API: Error: Código duplicado
+    API --> UI: 409 Conflict
+    UI --> Admin: "Error: Código ya existe"
+end
+
+== Caso de Uso 4: Registrar Almacén ==
+
+Admin -> UI: 1. Accede a "Gestión de Almacenes"
+activate UI
+
+UI -> UI: 2. Click "Nuevo Almacén"
+
+Admin -> UI: 3. Llena formulario\n(código, nombre, dirección,\nencargado, capacidad)
+
+UI -> UI: 4. Validar formulario
+
+UI -> API: 5. POST /api/almacenes\n{datos_almacen}
+activate API
+
+API -> AlmCtrl: 6. crearAlmacen(datos)
+activate AlmCtrl
+
+AlmCtrl -> AlmCtrl: 7. Validar datos
+
+AlmCtrl -> DB: 8. INSERT INTO almacenes\n(codigo, nombre, direccion,\nencargado_id, capacidad)
+activate DB
+DB --> AlmCtrl: 9. ID del almacén
+deactivate DB
+
+AlmCtrl --> API: 10. Almacén creado
+deactivate AlmCtrl
+
+API --> UI: 11. 201 Created\n{almacen}
+deactivate API
+
+UI --> Admin: 12. "Almacén registrado\nexitosamente"
+deactivate UI
+
+== Caso de Uso 5: Registrar Entrada de Inventario ==
+
+Admin -> UI: 1. Accede a "Movimientos"\n> "Registrar Entrada"
+activate UI
+
+UI -> API: 2. GET /api/productos?activos=true
+activate API
+API -> DB: 3. Obtener productos activos
+activate DB
+DB --> API: 4. Lista productos
+deactivate DB
+API --> UI: 5. {productos[]}
+deactivate API
+
+UI -> API: 6. GET /api/almacenes?activos=true
+activate API
+API -> DB: 7. Obtener almacenes activos
+activate DB
+DB --> API: 8. Lista almacenes
+deactivate DB
+API --> UI: 9. {almacenes[]}
+deactivate API
+
+UI --> Admin: 10. Mostrar formulario\n(con productos y almacenes)
+deactivate UI
+
+Admin -> UI: 11. Selecciona producto,\nalmacén, cantidad,\nprecio, proveedor
+activate UI
+
+UI -> UI: 12. Validar datos\n(cantidad > 0, precio > 0)
+
+UI -> API: 13. POST /api/movimientos/entrada\n{producto_id, almacen_id,\ncantidad, precio_compra,\nproveedor, documento}
+activate API
+
+API -> InvCtrl: 14. registrarEntrada(datos)
+activate InvCtrl
+
+InvCtrl -> DB: 15. BEGIN TRANSACTION
+activate DB
+
+InvCtrl -> DB: 16. INSERT INTO movimientos\n(tipo, producto_id,\nalmacen_id, cantidad,\nprecio, usuario_id, fecha)
+DB --> InvCtrl: 17. ID movimiento
+
+InvCtrl -> DB: 18. SELECT stock_actual\nFROM inventario\nWHERE producto_id = ?\nAND almacen_id = ?
+DB --> InvCtrl: 19. Stock actual o NULL
+
+alt Stock existe
+    InvCtrl -> DB: 20. UPDATE inventario\nSET stock_actual =\nstock_actual + cantidad\nWHERE producto_id = ?\nAND almacen_id = ?
+else Stock no existe
+    InvCtrl -> DB: 20. INSERT INTO inventario\n(producto_id, almacen_id,\nstock_actual)\nVALUES (?, ?, cantidad)
+end
+
+DB --> InvCtrl: 21. Stock actualizado
+
+InvCtrl -> DB: 22. COMMIT TRANSACTION
+deactivate DB
+
+InvCtrl --> API: 23. Entrada registrada
+deactivate InvCtrl
+
+API --> UI: 24. 201 Created\n{movimiento}
+deactivate API
+
+UI --> Admin: 25. "Entrada de inventario\nregistrada exitosamente"
+deactivate UI
+
+== Caso de Uso 6: Visualizar Dashboard Ejecutivo ==
+
+Admin -> UI: 1. Accede al Dashboard
+activate UI
+
+UI -> API: 2. GET /api/dashboard/ejecutivo
+activate API
+
+API -> RepCtrl: 3. obtenerDashboardEjecutivo()
+activate RepCtrl
+
+par Consultas paralelas
+    RepCtrl -> DB: 4a. SELECT COUNT(*)\nFROM productos\nWHERE activo = true
+    activate DB
+    DB --> RepCtrl: Total productos
+    deactivate DB
+    
+    RepCtrl -> DB: 4b. SELECT SUM(stock * precio)\nFROM inventario i\nJOIN productos p\nON i.producto_id = p.id
+    activate DB
+    DB --> RepCtrl: Valor total inventario
+    deactivate DB
+    
+    RepCtrl -> DB: 4c. SELECT COUNT(*)\nFROM inventario i\nJOIN productos p\nON i.producto_id = p.id\nWHERE stock <= stock_minimo
+    activate DB
+    DB --> RepCtrl: Productos en stock crítico
+    deactivate DB
+    
+    RepCtrl -> DB: 4d. SELECT COUNT(*)\nFROM inventario\nWHERE stock = 0
+    activate DB
+    DB --> RepCtrl: Productos agotados
+    deactivate DB
+    
+    RepCtrl -> DB: 4e. SELECT COUNT(*)\nFROM movimientos\nWHERE tipo = 'ENTRADA'\nAND MONTH(fecha) = MONTH(NOW())
+    activate DB
+    DB --> RepCtrl: Entradas del mes
+    deactivate DB
+    
+    RepCtrl -> DB: 4f. SELECT COUNT(*)\nFROM movimientos\nWHERE tipo = 'SALIDA'\nAND MONTH(fecha) = MONTH(NOW())
+    activate DB
+    DB --> RepCtrl: Salidas del mes
+    deactivate DB
+    
+    RepCtrl -> DB: 4g. SELECT p.nombre,\nSUM(m.cantidad) as total\nFROM movimientos m\nJOIN productos p\nON m.producto_id = p.id\nWHERE tipo = 'SALIDA'\nGROUP BY p.id\nORDER BY total DESC\nLIMIT 10
+    activate DB
+    DB --> RepCtrl: Top 10 productos más vendidos
+    deactivate DB
+end
+
+RepCtrl -> RepCtrl: 5. Consolidar datos\ny calcular KPIs
+
+RepCtrl --> API: 6. Datos del dashboard
+deactivate RepCtrl
+
+API --> UI: 7. 200 OK\n{dashboard_data}
+deactivate API
+
+UI -> UI: 8. Renderizar gráficos\ny visualizaciones
+
+UI --> Admin: 9. Mostrar Dashboard\ncon KPIs y gráficos
+deactivate UI
+
+== Caso de Uso 7: Generar Reporte de Auditoría ==
+
+Admin -> UI: 1. Accede a "Auditoría"
+activate UI
+
+Admin -> UI: 2. Selecciona filtros\n(fecha inicio, fecha fin,\ntipo de operación, usuario)
+
+UI -> API: 3. GET /api/auditoria/reporte?\nfecha_inicio=X&fecha_fin=Y\n&tipo=Z&usuario_id=W
+activate API
+
+API -> RepCtrl: 4. generarReporteAuditoria\n(filtros)
+activate RepCtrl
+
+RepCtrl -> DB: 5. SELECT a.*, u.nombre\nFROM auditoria a\nJOIN usuarios u\nON a.usuario_id = u.id\nWHERE fecha BETWEEN ? AND ?\nAND tipo = ?\nAND usuario_id = ?\nORDER BY fecha DESC
+activate DB
+DB --> RepCtrl: 6. Registros de auditoría
+deactivate DB
+
+RepCtrl -> RepCtrl: 7. Formatear datos\npara reporte
+
+RepCtrl --> API: 8. Datos del reporte
+deactivate RepCtrl
+
+API --> UI: 9. 200 OK\n{reporte_auditoria}
+deactivate API
+
+UI --> Admin: 10. Mostrar reporte\ncon opción de exportar
+deactivate UI
+
+@enduml

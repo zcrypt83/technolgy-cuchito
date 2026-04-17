@@ -1,0 +1,62 @@
+{
+  "rolePermissions": {
+    "administrador": [
+      "almacenes.crear",
+      "almacenes.editar",
+      "almacenes.eliminar",
+      "almacenes.ver",
+      "auditoria.ver",
+      "configuracion.editar",
+      "dashboard.ejecutivo",
+      "inventario.ajuste",
+      "inventario.entrada",
+      "inventario.salida",
+      "inventario.transferencia",
+      "inventario.ver",
+      "productos.crear",
+      "productos.editar",
+      "productos.eliminar",
+      "productos.ver",
+      "reportes.todos",
+      "reportes.ver",
+      "usuarios.crear",
+      "usuarios.editar",
+      "usuarios.eliminar",
+      "usuarios.ver"
+    ],
+    "encargado_almacen": [
+      "almacenes.ver",
+      "dashboard.almacen",
+      "inventario.ajuste",
+      "inventario.entrada",
+      "inventario.salida",
+      "inventario.transferencia",
+      "inventario.ver",
+      "productos.crear",
+      "productos.editar",
+      "productos.ver",
+      "reportes.operativos",
+      "reportes.ver"
+    ],
+    "usuario_operativo": [
+      "dashboard.basico",
+      "inventario.salida",
+      "inventario.ver",
+      "productos.ver",
+      "reportes.basicos",
+      "reportes.ver"
+    ]
+  },
+  "auditEnabledActions": [
+    "ACTUALIZAR",
+    "ACTUALIZAR_INVENTARIO",
+    "CAMBIO_PASSWORD",
+    "CONFIGURACION_ACCIONES",
+    "CONFIGURACION_PERMISOS",
+    "CREAR",
+    "CREAR_MOVIMIENTO",
+    "ELIMINAR",
+    "LOGIN"
+  ],
+  "updatedAt": "2026-04-16T00:00:00.000Z"
+}

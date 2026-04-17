@@ -1,0 +1,442 @@
+@startuml Diagrama de Secuencia - Encargado de Almacén
+
+title Diagrama de Secuencia - Actor: Encargado de Almacén\nSistema SaaS de Control de Inventario - Technology Cuchito
+
+actor "Encargado de\nAlmacén" as Encargado
+participant "Interfaz Web\n(Frontend)" as UI
+participant "API REST\n(Backend)" as API
+participant "Controlador\nAutenticación" as AuthCtrl
+participant "Controlador\nProductos" as ProdCtrl
+participant "Controlador\nInventario" as InvCtrl
+participant "Controlador\nTransferencias" as TransCtrl
+participant "Controlador\nReportes" as RepCtrl
+participant "Servicio\nNotificaciones" as NotifServ
+database "Base de Datos\nPostgreSQL" as DB
+
+== Caso de Uso 1: Iniciar Sesión ==
+
+Encargado -> UI: 1. Ingresa credenciales
+activate UI
+
+UI -> API: 2. POST /api/auth/login\n{username, password}
+activate API
+
+API -> AuthCtrl: 3. login(username, password)
+activate AuthCtrl
+
+AuthCtrl -> DB: 4. SELECT * FROM usuarios\nWHERE username = ?
+activate DB
+DB --> AuthCtrl: 5. Datos usuario\n(rol: ENCARGADO_ALMACEN,\nalmacen_asignado_id)
+deactivate DB
+
+AuthCtrl -> AuthCtrl: 6. Verificar contraseña
+
+AuthCtrl -> AuthCtrl: 7. Generar token JWT\n(incluye almacen_asignado_id)
+
+AuthCtrl --> API: 8. {token, usuario, rol,\nalmacen_asignado}
+deactivate AuthCtrl
+
+API --> UI: 9. 200 OK\n{token, datos_usuario}
+deactivate API
+
+UI --> Encargado: 10. Redirigir a Dashboard\n(filtrado por su almacén)
+deactivate UI
+
+== Caso de Uso 2: Registrar Entrada de Inventario ==
+
+Encargado -> UI: 1. Accede a "Registrar Entrada"
+activate UI
+
+UI -> API: 2. GET /api/productos?activos=true
+activate API
+API -> DB: 3. Obtener productos activos
+activate DB
+DB --> API: 4. Lista productos
+deactivate DB
+API --> UI: 5. {productos[]}
+deactivate API
+
+UI -> API: 6. GET /api/almacenes/mi-almacen
+activate API
+
+API -> AuthCtrl: 7. Verificar token\n(obtener almacen_asignado_id)
+activate AuthCtrl
+AuthCtrl --> API: 8. almacen_id
+deactivate AuthCtrl
+
+API -> DB: 9. SELECT * FROM almacenes\nWHERE id = almacen_id
+activate DB
+DB --> API: 10. Datos del almacén asignado
+deactivate DB
+API --> UI: 11. {almacen}
+deactivate API
+
+UI --> Encargado: 12. Mostrar formulario\n(almacén predefinido)
+deactivate UI
+
+Encargado -> UI: 13. Selecciona producto,\ningresa cantidad, precio,\nproveedor, documento
+activate UI
+
+UI -> UI: 14. Validar datos
+
+UI -> API: 15. POST /api/movimientos/entrada\n{producto_id, almacen_id,\ncantidad, precio_compra,\nproveedor, documento}
+activate API
+
+API -> InvCtrl: 16. registrarEntrada(datos)
+activate InvCtrl
+
+InvCtrl -> DB: 17. BEGIN TRANSACTION
+activate DB
+
+InvCtrl -> DB: 18. INSERT INTO movimientos\n(tipo: 'ENTRADA',\nproducto_id, almacen_id,\ncantidad, precio,\nusuario_id, fecha,\nproveedor, documento)
+DB --> InvCtrl: 19. ID movimiento
+
+InvCtrl -> DB: 20. UPDATE inventario\nSET stock_actual =\nstock_actual + cantidad\nWHERE producto_id = ?\nAND almacen_id = ?
+DB --> InvCtrl: 21. Stock actualizado
+
+InvCtrl -> DB: 22. INSERT INTO auditoria\n(usuario_id, accion,\ntabla, registro_id, fecha)
+DB --> InvCtrl: 23. Auditoría registrada
+
+InvCtrl -> DB: 24. COMMIT TRANSACTION
+deactivate DB
+
+InvCtrl --> API: 25. Entrada registrada
+deactivate InvCtrl
+
+API --> UI: 26. 201 Created\n{movimiento}
+deactivate API
+
+UI --> Encargado: 27. "Entrada registrada\nexitosamente"\n+ Comprobante
+deactivate UI
+
+== Caso de Uso 3: Registrar Salida de Inventario ==
+
+Encargado -> UI: 1. Accede a "Registrar Salida"
+activate UI
+
+UI -> API: 2. GET /api/inventario/stock\n?almacen_id={mi_almacen}
+activate API
+
+API -> InvCtrl: 3. obtenerStockAlmacen(almacen_id)
+activate InvCtrl
+
+InvCtrl -> DB: 4. SELECT p.*, i.stock_actual\nFROM productos p\nJOIN inventario i\nON p.id = i.producto_id\nWHERE i.almacen_id = ?\nAND i.stock_actual > 0
+activate DB
+DB --> InvCtrl: 5. Productos con stock
+deactivate DB
+
+InvCtrl --> API: 6. {productos_stock[]}
+deactivate InvCtrl
+API --> UI: 7. Lista de productos
+deactivate API
+
+UI --> Encargado: 8. Mostrar productos\ndisponibles en su almacén
+deactivate UI
+
+Encargado -> UI: 9. Selecciona producto,\ncantidad, tipo de salida,\ndestinatario, documento
+activate UI
+
+UI -> UI: 10. Validar:\n- cantidad <= stock_disponible\n- datos completos
+
+UI -> API: 11. POST /api/movimientos/salida\n{producto_id, almacen_id,\ncantidad, tipo_salida,\ndestinatario, documento}
+activate API
+
+API -> InvCtrl: 12. registrarSalida(datos)
+activate InvCtrl
+
+InvCtrl -> DB: 13. SELECT stock_actual\nFROM inventario\nWHERE producto_id = ?\nAND almacen_id = ?
+activate DB
+DB --> InvCtrl: 14. stock_actual
+deactivate DB
+
+alt stock_actual >= cantidad
+    InvCtrl -> DB: 15. BEGIN TRANSACTION
+    activate DB
+    
+    InvCtrl -> DB: 16. INSERT INTO movimientos\n(tipo: 'SALIDA', ...)
+    DB --> InvCtrl: 17. ID movimiento
+    
+    InvCtrl -> DB: 18. UPDATE inventario\nSET stock_actual =\nstock_actual - cantidad
+    DB --> InvCtrl: 19. Stock actualizado
+    
+    InvCtrl -> DB: 20. SELECT stock_actual,\nstock_minimo\nFROM inventario i\nJOIN productos p\nON i.producto_id = p.id\nWHERE producto_id = ?\nAND almacen_id = ?
+    DB --> InvCtrl: 21. Nuevo stock y mínimo
+    
+    alt stock_actual <= stock_minimo
+        InvCtrl -> NotifServ: 22. generarAlertaStockMinimo\n(producto, almacen, stock)
+        activate NotifServ
+        NotifServ -> DB: 23. INSERT INTO alertas\n(tipo: 'STOCK_MINIMO', ...)
+        activate DB
+        DB --> NotifServ: Alerta creada
+        deactivate DB
+        NotifServ --> InvCtrl: Notificación enviada
+        deactivate NotifServ
+    end
+    
+    InvCtrl -> DB: 24. INSERT INTO auditoria
+    DB --> InvCtrl: Auditoría registrada
+    
+    InvCtrl -> DB: 25. COMMIT TRANSACTION
+    deactivate DB
+    
+    InvCtrl --> API: 26. Salida registrada
+    deactivate InvCtrl
+    
+    API --> UI: 27. 201 Created\n{movimiento, alerta?}
+    deactivate API
+    
+    UI --> Encargado: 28. "Salida registrada"\n+ Alerta si stock bajo
+    deactivate UI
+    
+else stock_actual < cantidad
+    InvCtrl --> API: Error: Stock insuficiente
+    API --> UI: 400 Bad Request
+    UI --> Encargado: "Error: Stock\ninsuficiente"
+end
+
+== Caso de Uso 4: Transferir entre Almacenes ==
+
+Encargado -> UI: 1. Accede a "Transferencias"\n> "Nueva Transferencia"
+activate UI
+
+UI -> API: 2. GET /api/inventario/stock\n?almacen_id={mi_almacen}
+activate API
+API -> DB: 3. Productos con stock
+activate DB
+DB --> API: 4. Lista productos
+deactivate DB
+API --> UI: 5. {productos[]}
+deactivate API
+
+UI -> API: 6. GET /api/almacenes\n?excluir={mi_almacen}
+activate API
+API -> DB: 7. Otros almacenes
+activate DB
+DB --> API: 8. Lista almacenes
+deactivate DB
+API --> UI: 9. {almacenes[]}
+deactivate API
+
+UI --> Encargado: 10. Mostrar formulario
+deactivate UI
+
+Encargado -> UI: 11. Selecciona:\n- Productos y cantidades\n- Almacén destino\n- Observaciones
+activate UI
+
+UI -> UI: 12. Validar stock disponible
+
+UI -> API: 13. POST /api/transferencias\n{almacen_origen_id,\nalmacen_destino_id,\nproductos: [{id, cantidad}],\nobservaciones}
+activate API
+
+API -> TransCtrl: 14. crearTransferencia(datos)
+activate TransCtrl
+
+TransCtrl -> DB: 15. BEGIN TRANSACTION
+activate DB
+
+TransCtrl -> DB: 16. INSERT INTO transferencias\n(almacen_origen_id,\nalmacen_destino_id,\nestado: 'PENDIENTE',\nusuario_solicitante_id,\nfecha_solicitud)
+DB --> TransCtrl: 17. ID transferencia
+
+loop Para cada producto
+    TransCtrl -> DB: 18. INSERT INTO\ntransferencia_detalles\n(transferencia_id,\nproducto_id, cantidad)
+    DB --> TransCtrl: Detalle insertado
+end
+
+TransCtrl -> DB: 19. INSERT INTO auditoria
+DB --> TransCtrl: Auditoría registrada
+
+TransCtrl -> NotifServ: 20. notificarEncargadoDestino\n(transferencia_id)
+activate NotifServ
+NotifServ -> DB: 21. SELECT * FROM usuarios\nWHERE almacen_asignado_id =\nalmacen_destino_id
+activate DB
+DB --> NotifServ: Encargado destino
+deactivate DB
+
+NotifServ -> DB: 22. INSERT INTO notificaciones\n(usuario_id, tipo, mensaje)
+activate DB
+DB --> NotifServ: Notificación creada
+deactivate DB
+NotifServ --> TransCtrl: Notificado
+deactivate NotifServ
+
+TransCtrl -> DB: 23. COMMIT TRANSACTION
+deactivate DB
+
+TransCtrl --> API: 24. Transferencia creada
+deactivate TransCtrl
+
+API --> UI: 25. 201 Created\n{transferencia}
+deactivate API
+
+UI --> Encargado: 26. "Transferencia solicitada"\n"Pendiente de confirmación"
+deactivate UI
+
+== Caso de Uso 5: Confirmar Recepción de Transferencia ==
+
+Encargado -> UI: 1. Recibe notificación de\ntransferencia pendiente
+activate UI
+
+UI -> API: 2. GET /api/transferencias\n?destino={mi_almacen}\n&estado=PENDIENTE
+activate API
+
+API -> TransCtrl: 3. listarTransferenciasPendientes\n(almacen_destino_id)
+activate TransCtrl
+
+TransCtrl -> DB: 4. SELECT t.*, u.nombre,\nao.nombre as almacen_origen\nFROM transferencias t\nJOIN usuarios u\nON t.usuario_solicitante_id = u.id\nJOIN almacenes ao\nON t.almacen_origen_id = ao.id\nWHERE almacen_destino_id = ?\nAND estado = 'PENDIENTE'
+activate DB
+DB --> TransCtrl: 5. Transferencias pendientes
+deactivate DB
+
+TransCtrl --> API: 6. {transferencias[]}
+deactivate TransCtrl
+API --> UI: 7. Lista transferencias
+deactivate API
+
+UI --> Encargado: 8. Mostrar transferencias\npendientes de confirmación
+deactivate UI
+
+Encargado -> UI: 9. Selecciona transferencia\ny click "Confirmar Recepción"
+activate UI
+
+UI -> API: 10. GET /api/transferencias/{id}/detalles
+activate API
+API -> DB: 11. Obtener productos\nde la transferencia
+activate DB
+DB --> API: 12. Detalles
+deactivate DB
+API --> UI: 13. {detalles[]}
+deactivate API
+
+UI --> Encargado: 14. Mostrar productos\na recibir
+deactivate UI
+
+Encargado -> UI: 15. Confirma recepción
+activate UI
+
+UI -> API: 16. PUT /api/transferencias/{id}\n/confirmar-recepcion
+activate API
+
+API -> TransCtrl: 17. confirmarRecepcion\n(transferencia_id, usuario_id)
+activate TransCtrl
+
+TransCtrl -> DB: 18. BEGIN TRANSACTION
+activate DB
+
+TransCtrl -> DB: 19. SELECT * FROM transferencias\nWHERE id = ?
+DB --> TransCtrl: 20. Datos transferencia
+
+TransCtrl -> DB: 21. SELECT * FROM\ntransferencia_detalles\nWHERE transferencia_id = ?
+DB --> TransCtrl: 22. Productos a transferir
+
+loop Para cada producto
+    ' Registrar salida del almacén origen
+    TransCtrl -> DB: 23a. INSERT INTO movimientos\n(tipo: 'SALIDA',\nsubtipo: 'TRANSFERENCIA',\nproducto_id, almacen_id: origen,\ncantidad, fecha)
+    DB --> TransCtrl: Movimiento salida
+    
+    TransCtrl -> DB: 23b. UPDATE inventario\nSET stock_actual =\nstock_actual - cantidad\nWHERE producto_id = ?\nAND almacen_id = origen
+    DB --> TransCtrl: Stock origen actualizado
+    
+    ' Registrar entrada al almacén destino
+    TransCtrl -> DB: 24a. INSERT INTO movimientos\n(tipo: 'ENTRADA',\nsubtipo: 'TRANSFERENCIA',\nproducto_id, almacen_id: destino,\ncantidad, fecha)
+    DB --> TransCtrl: Movimiento entrada
+    
+    TransCtrl -> DB: 24b. UPDATE inventario\nSET stock_actual =\nstock_actual + cantidad\nWHERE producto_id = ?\nAND almacen_id = destino
+    DB --> TransCtrl: Stock destino actualizado
+end
+
+TransCtrl -> DB: 25. UPDATE transferencias\nSET estado = 'COMPLETADA',\nusuario_receptor_id = ?,\nfecha_recepcion = NOW()
+DB --> TransCtrl: Estado actualizado
+
+TransCtrl -> DB: 26. INSERT INTO auditoria
+DB --> TransCtrl: Auditoría registrada
+
+TransCtrl -> NotifServ: 27. notificarSolicitante\n(transferencia completada)
+activate NotifServ
+NotifServ -> DB: 28. INSERT INTO notificaciones
+activate DB
+DB --> NotifServ: Notificación creada
+deactivate DB
+NotifServ --> TransCtrl: Notificado
+deactivate NotifServ
+
+TransCtrl -> DB: 29. COMMIT TRANSACTION
+deactivate DB
+
+TransCtrl --> API: 30. Recepción confirmada
+deactivate TransCtrl
+
+API --> UI: 31. 200 OK\n{transferencia_completada}
+deactivate API
+
+UI --> Encargado: 32. "Transferencia confirmada"\n"Stock actualizado"
+deactivate UI
+
+== Caso de Uso 6: Consultar Stock en Tiempo Real ==
+
+Encargado -> UI: 1. Accede a "Consultar Stock"
+activate UI
+
+UI -> API: 2. GET /api/inventario/stock\n?almacen_id={mi_almacen}
+activate API
+
+API -> InvCtrl: 3. obtenerStockAlmacen\n(almacen_id)
+activate InvCtrl
+
+InvCtrl -> DB: 4. SELECT p.codigo, p.nombre,\np.categoria, p.marca,\ni.stock_actual, p.stock_minimo,\np.precio_venta,\n(i.stock_actual * p.precio_venta)\nas valor_total\nFROM inventario i\nJOIN productos p\nON i.producto_id = p.id\nWHERE i.almacen_id = ?\nORDER BY p.nombre
+activate DB
+DB --> InvCtrl: 5. Stock de productos
+deactivate DB
+
+InvCtrl -> InvCtrl: 6. Clasificar productos:\n- Stock normal\n- Stock bajo (<=mínimo)\n- Stock agotado (=0)
+
+InvCtrl --> API: 7. {stock_detallado,\nestadisticas}
+deactivate InvCtrl
+
+API --> UI: 8. 200 OK {datos_stock}
+deactivate API
+
+UI --> Encargado: 9. Mostrar tabla de stock\ncon indicadores visuales\n(verde/amarillo/rojo)
+deactivate UI
+
+Encargado -> UI: 10. Aplica filtros\n(categoría, estado,\nbúsqueda por nombre)
+activate UI
+
+UI -> UI: 11. Filtrado local o\nnueva consulta a API
+
+UI --> Encargado: 12. Resultados filtrados
+deactivate UI
+
+== Caso de Uso 7: Generar Reporte de Movimientos ==
+
+Encargado -> UI: 1. Accede a "Reportes"\n> "Movimientos"
+activate UI
+
+UI --> Encargado: 2. Mostrar filtros\n(fecha inicio, fecha fin,\ntipo de movimiento)
+deactivate UI
+
+Encargado -> UI: 3. Selecciona período\ny tipo de movimiento
+activate UI
+
+UI -> API: 4. GET /api/reportes/movimientos\n?almacen_id={mi_almacen}\n&fecha_inicio=X\n&fecha_fin=Y\n&tipo=ENTRADA/SALIDA
+activate API
+
+API -> RepCtrl: 5. generarReporteMovimientos\n(filtros)
+activate RepCtrl
+
+RepCtrl -> DB: 6. SELECT m.*, p.codigo,\np.nombre, u.nombre as usuario\nFROM movimientos m\nJOIN productos p\nON m.producto_id = p.id\nJOIN usuarios u\nON m.usuario_id = u.id\nWHERE m.almacen_id = ?\nAND m.fecha BETWEEN ? AND ?\nAND m.tipo = ?\nORDER BY m.fecha DESC
+activate DB
+DB --> RepCtrl: 7. Movimientos
+deactivate DB
+
+RepCtrl -> RepCtrl: 8. Calcular totales:\n- Total entradas\n- Total salidas\n- Valor total\n- Productos más movidos
+
+RepCtrl --> API: 9. {reporte_movimientos}
+deactivate RepCtrl
+
+API --> UI: 10. 200 OK {reporte}
+deactivate API
+
+UI --> Encargado: 11. Mostrar reporte\ncon gráficos y tablas\n+ Opción exportar PDF/Excel
+deactivate UI
+
+@enduml

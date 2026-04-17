@@ -1,0 +1,427 @@
+@startuml Diagrama Entidad-Relación
+
+title Diagrama de Entidad-Relación (ERD)\nSistema SaaS de Control de Inventario - Technology Cuchito
+
+' ========== ESTILOS ==========
+skinparam linetype ortho
+skinparam roundcorner 10
+skinparam backgroundColor #FEFEFE
+
+skinparam class {
+    BackgroundColor<<PK>> #FFE4B5
+    BackgroundColor<<FK>> #E0F2F7
+    BackgroundColor #F5F5F5
+    BorderColor #666666
+    ArrowColor #555555
+    FontName Arial
+    FontSize 11
+}
+
+' ========== ENTIDADES ==========
+
+entity "usuarios" as usuarios {
+  * **id** : SERIAL <<PK>>
+  --
+  * username : VARCHAR(50) <<UNIQUE>>
+  * password_hash : VARCHAR(255)
+  * nombre : VARCHAR(100)
+  * email : VARCHAR(100) <<UNIQUE>>
+  * rol : VARCHAR(30)
+  * telefono : VARCHAR(20)
+  * activo : BOOLEAN
+  * almacen_asignado_id : INTEGER <<FK>>
+  * fecha_creacion : TIMESTAMP
+  * ultimo_acceso : TIMESTAMP
+}
+
+entity "productos" as productos {
+  * **id** : SERIAL <<PK>>
+  --
+  * codigo : VARCHAR(50) <<UNIQUE>>
+  * nombre : VARCHAR(200)
+  * descripcion : TEXT
+  * categoria_id : INTEGER <<FK>>
+  * marca : VARCHAR(100)
+  * modelo : VARCHAR(100)
+  * precio_compra : DECIMAL(10,2)
+  * precio_venta : DECIMAL(10,2)
+  * stock_minimo : INTEGER
+  * imagen_url : VARCHAR(500)
+  * activo : BOOLEAN
+  * fecha_creacion : TIMESTAMP
+  * fecha_actualizacion : TIMESTAMP
+}
+
+entity "categorias" as categorias {
+  * **id** : SERIAL <<PK>>
+  --
+  * codigo : VARCHAR(30) <<UNIQUE>>
+  * nombre : VARCHAR(100)
+  * descripcion : TEXT
+  * activo : BOOLEAN
+  * fecha_creacion : TIMESTAMP
+}
+
+entity "almacenes" as almacenes {
+  * **id** : SERIAL <<PK>>
+  --
+  * codigo : VARCHAR(30) <<UNIQUE>>
+  * nombre : VARCHAR(150)
+  * direccion : TEXT
+  * ciudad : VARCHAR(100)
+  * telefono : VARCHAR(20)
+  * capacidad : INTEGER
+  * encargado_id : INTEGER <<FK>>
+  * activo : BOOLEAN
+  * fecha_creacion : TIMESTAMP
+  * fecha_actualizacion : TIMESTAMP
+}
+
+entity "inventario" as inventario {
+  * **id** : SERIAL <<PK>>
+  --
+  * producto_id : INTEGER <<FK>>
+  * almacen_id : INTEGER <<FK>>
+  * stock_actual : INTEGER
+  * stock_reservado : INTEGER
+  * stock_disponible : INTEGER <<COMPUTED>>
+  * ultima_entrada : TIMESTAMP
+  * ultima_salida : TIMESTAMP
+  * fecha_actualizacion : TIMESTAMP
+  --
+  <<UNIQUE(producto_id, almacen_id)>>
+}
+
+entity "movimientos" as movimientos {
+  * **id** : SERIAL <<PK>>
+  --
+  * tipo : VARCHAR(20)
+  * subtipo : VARCHAR(30)
+  * producto_id : INTEGER <<FK>>
+  * almacen_id : INTEGER <<FK>>
+  * cantidad : INTEGER
+  * precio_unitario : DECIMAL(10,2)
+  * valor_total : DECIMAL(12,2)
+  * usuario_id : INTEGER <<FK>>
+  * documento : VARCHAR(50)
+  * proveedor : VARCHAR(200)
+  * cliente : VARCHAR(200)
+  * venta_id : INTEGER <<FK>>
+  * transferencia_id : INTEGER <<FK>>
+  * observaciones : TEXT
+  * fecha : TIMESTAMP
+}
+
+entity "transferencias" as transferencias {
+  * **id** : SERIAL <<PK>>
+  --
+  * codigo : VARCHAR(50) <<UNIQUE>>
+  * almacen_origen_id : INTEGER <<FK>>
+  * almacen_destino_id : INTEGER <<FK>>
+  * estado : VARCHAR(20)
+  * usuario_solicitante_id : INTEGER <<FK>>
+  * usuario_receptor_id : INTEGER <<FK>>
+  * fecha_solicitud : TIMESTAMP
+  * fecha_recepcion : TIMESTAMP
+  * observaciones : TEXT
+}
+
+entity "transferencia_detalles" as transferencia_detalles {
+  * **id** : SERIAL <<PK>>
+  --
+  * transferencia_id : INTEGER <<FK>>
+  * producto_id : INTEGER <<FK>>
+  * cantidad : INTEGER
+  * cantidad_recibida : INTEGER
+  * observaciones : TEXT
+}
+
+entity "ventas" as ventas {
+  * **id** : SERIAL <<PK>>
+  --
+  * codigo : VARCHAR(50) <<UNIQUE>>
+  * fecha : TIMESTAMP
+  * cliente_nombre : VARCHAR(200)
+  * cliente_documento : VARCHAR(20)
+  * cliente_telefono : VARCHAR(20)
+  * cliente_email : VARCHAR(100)
+  * subtotal : DECIMAL(10,2)
+  * impuesto : DECIMAL(10,2)
+  * total : DECIMAL(10,2)
+  * tipo_pago : VARCHAR(30)
+  * estado : VARCHAR(20)
+  * usuario_id : INTEGER <<FK>>
+  * almacen_id : INTEGER <<FK>>
+  * observaciones : TEXT
+  * fecha_creacion : TIMESTAMP
+}
+
+entity "venta_detalles" as venta_detalles {
+  * **id** : SERIAL <<PK>>
+  --
+  * venta_id : INTEGER <<FK>>
+  * producto_id : INTEGER <<FK>>
+  * cantidad : INTEGER
+  * precio_unitario : DECIMAL(10,2)
+  * descuento : DECIMAL(10,2)
+  * subtotal : DECIMAL(10,2)
+}
+
+entity "proveedores" as proveedores {
+  * **id** : SERIAL <<PK>>
+  --
+  * codigo : VARCHAR(30) <<UNIQUE>>
+  * razon_social : VARCHAR(200)
+  * ruc : VARCHAR(20) <<UNIQUE>>
+  * direccion : TEXT
+  * telefono : VARCHAR(20)
+  * email : VARCHAR(100)
+  * contacto : VARCHAR(150)
+  * activo : BOOLEAN
+  * fecha_creacion : TIMESTAMP
+}
+
+entity "producto_proveedor" as producto_proveedor {
+  * **id** : SERIAL <<PK>>
+  --
+  * producto_id : INTEGER <<FK>>
+  * proveedor_id : INTEGER <<FK>>
+  * precio_compra : DECIMAL(10,2)
+  * codigo_proveedor : VARCHAR(50)
+  * tiempo_entrega_dias : INTEGER
+  * es_principal : BOOLEAN
+  * activo : BOOLEAN
+  * fecha_creacion : TIMESTAMP
+  --
+  <<UNIQUE(producto_id, proveedor_id)>>
+}
+
+entity "alertas" as alertas {
+  * **id** : SERIAL <<PK>>
+  --
+  * tipo : VARCHAR(30)
+  * prioridad : VARCHAR(20)
+  * producto_id : INTEGER <<FK>>
+  * almacen_id : INTEGER <<FK>>
+  * stock_actual : INTEGER
+  * stock_minimo : INTEGER
+  * mensaje : TEXT
+  * estado : VARCHAR(20)
+  * fecha_creacion : TIMESTAMP
+  * fecha_atencion : TIMESTAMP
+  * atendido_por : INTEGER <<FK>>
+}
+
+entity "notificaciones" as notificaciones {
+  * **id** : SERIAL <<PK>>
+  --
+  * usuario_id : INTEGER <<FK>>
+  * tipo : VARCHAR(30)
+  * titulo : VARCHAR(200)
+  * mensaje : TEXT
+  * datos_adicionales : JSONB
+  * leida : BOOLEAN
+  * fecha : TIMESTAMP
+  * fecha_lectura : TIMESTAMP
+}
+
+entity "auditoria" as auditoria {
+  * **id** : SERIAL <<PK>>
+  --
+  * usuario_id : INTEGER <<FK>>
+  * accion : VARCHAR(50)
+  * tabla : VARCHAR(50)
+  * registro_id : INTEGER
+  * datos_anteriores : JSONB
+  * datos_nuevos : JSONB
+  * ip_address : VARCHAR(45)
+  * user_agent : TEXT
+  * fecha : TIMESTAMP
+}
+
+entity "configuracion" as configuracion {
+  * **id** : SERIAL <<PK>>
+  --
+  * clave : VARCHAR(100) <<UNIQUE>>
+  * valor : TEXT
+  * tipo : VARCHAR(30)
+  * descripcion : TEXT
+  * modificable : BOOLEAN
+  * fecha_actualizacion : TIMESTAMP
+  * actualizado_por : INTEGER <<FK>>
+}
+
+' ========== RELACIONES ==========
+
+' Usuarios - Almacenes (Usuario asignado a almacén)
+usuarios }o--|| almacenes : "almacen_asignado_id"
+
+' Almacenes - Usuarios (Encargado del almacén)
+almacenes }o--|| usuarios : "encargado_id"
+
+' Productos - Categorías
+productos }o--|| categorias : "categoria_id"
+
+' Inventario - Productos
+inventario }o--|| productos : "producto_id"
+
+' Inventario - Almacenes
+inventario }o--|| almacenes : "almacen_id"
+
+' Movimientos - Productos
+movimientos }o--|| productos : "producto_id"
+
+' Movimientos - Almacenes
+movimientos }o--|| almacenes : "almacen_id"
+
+' Movimientos - Usuarios
+movimientos }o--|| usuarios : "usuario_id"
+
+' Movimientos - Ventas
+movimientos }o--o| ventas : "venta_id"
+
+' Movimientos - Transferencias
+movimientos }o--o| transferencias : "transferencia_id"
+
+' Transferencias - Almacenes (Origen)
+transferencias }o--|| almacenes : "almacen_origen_id"
+
+' Transferencias - Almacenes (Destino)
+transferencias }o--|| almacenes : "almacen_destino_id"
+
+' Transferencias - Usuarios (Solicitante)
+transferencias }o--|| usuarios : "usuario_solicitante_id"
+
+' Transferencias - Usuarios (Receptor)
+transferencias }o--o| usuarios : "usuario_receptor_id"
+
+' Transferencia Detalles - Transferencias
+transferencia_detalles }o--|| transferencias : "transferencia_id"
+
+' Transferencia Detalles - Productos
+transferencia_detalles }o--|| productos : "producto_id"
+
+' Ventas - Usuarios
+ventas }o--|| usuarios : "usuario_id"
+
+' Ventas - Almacenes
+ventas }o--|| almacenes : "almacen_id"
+
+' Venta Detalles - Ventas
+venta_detalles }o--|| ventas : "venta_id"
+
+' Venta Detalles - Productos
+venta_detalles }o--|| productos : "producto_id"
+
+' Producto Proveedor - Productos
+producto_proveedor }o--|| productos : "producto_id"
+
+' Producto Proveedor - Proveedores
+producto_proveedor }o--|| proveedores : "proveedor_id"
+
+' Alertas - Productos
+alertas }o--|| productos : "producto_id"
+
+' Alertas - Almacenes
+alertas }o--|| almacenes : "almacen_id"
+
+' Alertas - Usuarios (Atendido por)
+alertas }o--o| usuarios : "atendido_por"
+
+' Notificaciones - Usuarios
+notificaciones }o--|| usuarios : "usuario_id"
+
+' Auditoría - Usuarios
+auditoria }o--|| usuarios : "usuario_id"
+
+' Configuración - Usuarios
+configuracion }o--o| usuarios : "actualizado_por"
+
+' ========== NOTAS ==========
+
+note right of usuarios
+  **Roles disponibles:**
+  - ADMINISTRADOR
+  - ENCARGADO_ALMACEN
+  - USUARIO_OPERATIVO
+  
+  **Contraseñas:**
+  - Hash con Bcrypt
+  - Mínimo 8 caracteres
+end note
+
+note right of productos
+  **stock_disponible en inventario:**
+  stock_actual - stock_reservado
+  
+  **Código único por producto**
+  (ej: LAPTOP-DELL-001)
+end note
+
+note right of inventario
+  **Tabla central del sistema**
+  Relaciona productos con almacenes
+  y mantiene el stock actual
+  
+  **Trigger para actualizar:**
+  - ultima_entrada
+  - ultima_salida
+  - fecha_actualizacion
+end note
+
+note right of movimientos
+  **Tipos de movimiento:**
+  - ENTRADA
+  - SALIDA
+  
+  **Subtipos:**
+  - COMPRA
+  - VENTA
+  - TRANSFERENCIA
+  - AJUSTE
+  - MERMA
+  - DEVOLUCION
+end note
+
+note right of transferencias
+  **Estados posibles:**
+  - PENDIENTE
+  - EN_TRANSITO
+  - COMPLETADA
+  - CANCELADA
+  
+  **Proceso:**
+  1. Solicitud (usuario_solicitante)
+  2. Recepción (usuario_receptor)
+  3. Actualización de stock
+end note
+
+note right of alertas
+  **Tipos de alerta:**
+  - STOCK_MINIMO
+  - STOCK_AGOTADO
+  - STOCK_EXCESIVO
+  - PRODUCTO_VENCIDO
+  
+  **Prioridades:**
+  - BAJA
+  - MEDIA
+  - ALTA
+  - CRITICA
+end note
+
+note right of auditoria
+  **Registro completo de:**
+  - Quién hizo la acción
+  - Qué acción realizó
+  - Cuándo la realizó
+  - Qué datos cambió
+  - Desde qué IP
+  
+  **Útil para:**
+  - Seguridad
+  - Trazabilidad
+  - Cumplimiento normativo
+end note
+
+@enduml

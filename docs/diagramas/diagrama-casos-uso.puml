@@ -1,0 +1,198 @@
+@startuml Diagrama de Casos de Uso - Sistema SaaS Control de Inventario
+
+title Diagrama de Casos de Uso\nSistema SaaS de Control de Inventario - Technology Cuchito
+
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Administrador" as Admin
+actor "Encargado de Almacén" as Encargado
+actor "Usuario Operativo" as Usuario
+
+rectangle "Sistema SaaS de Control de Inventario" {
+  
+  package "Módulo de Autenticación y Seguridad" {
+    usecase "Iniciar Sesión" as UC01
+    usecase "Cerrar Sesión" as UC02
+    usecase "Gestionar Usuarios" as UC03
+    usecase "Asignar Roles y Permisos" as UC04
+    usecase "Cambiar Contraseña" as UC05
+  }
+  
+  package "Módulo de Gestión de Productos" {
+    usecase "Registrar Producto" as UC06
+    usecase "Actualizar Producto" as UC07
+    usecase "Consultar Productos" as UC08
+    usecase "Buscar y Filtrar Productos" as UC09
+    usecase "Desactivar Producto" as UC10
+    usecase "Gestionar Categorías" as UC11
+  }
+  
+  package "Módulo de Gestión de Almacenes" {
+    usecase "Registrar Almacén" as UC12
+    usecase "Actualizar Almacén" as UC13
+    usecase "Consultar Almacenes" as UC14
+    usecase "Asignar Encargado" as UC15
+    usecase "Desactivar Almacén" as UC16
+  }
+  
+  package "Módulo de Gestión de Inventario" {
+    usecase "Registrar Entrada de Inventario" as UC17
+    usecase "Registrar Salida de Inventario" as UC18
+    usecase "Consultar Stock en Tiempo Real" as UC19
+    usecase "Transferir entre Almacenes" as UC20
+    usecase "Confirmar Recepción de Transferencia" as UC21
+    usecase "Realizar Ajuste de Inventario" as UC22
+  }
+  
+  package "Módulo de Alertas y Notificaciones" {
+    usecase "Configurar Alertas de Stock Mínimo" as UC23
+    usecase "Recibir Notificaciones" as UC24
+    usecase "Consultar Productos en Nivel Crítico" as UC25
+  }
+  
+  package "Módulo de Reportes y Análisis" {
+    usecase "Generar Reporte de Stock Actual" as UC26
+    usecase "Generar Reporte de Movimientos" as UC27
+    usecase "Generar Reporte de Rotación" as UC28
+    usecase "Generar Reporte de Valorización" as UC29
+    usecase "Visualizar Dashboard Ejecutivo" as UC30
+    usecase "Exportar Reportes" as UC31
+    usecase "Generar Análisis de Tendencias" as UC32
+  }
+  
+  package "Módulo de Auditoría" {
+    usecase "Consultar Historial de Movimientos" as UC33
+    usecase "Consultar Log de Auditoría" as UC34
+    usecase "Generar Reporte de Auditoría" as UC35
+  }
+}
+
+' ========== RELACIONES ADMINISTRADOR ==========
+Admin --> UC01
+Admin --> UC02
+Admin --> UC03
+Admin --> UC04
+Admin --> UC05
+
+Admin --> UC06
+Admin --> UC07
+Admin --> UC08
+Admin --> UC09
+Admin --> UC10
+Admin --> UC11
+
+Admin --> UC12
+Admin --> UC13
+Admin --> UC14
+Admin --> UC15
+Admin --> UC16
+
+Admin --> UC17
+Admin --> UC18
+Admin --> UC19
+Admin --> UC20
+Admin --> UC21
+Admin --> UC22
+
+Admin --> UC23
+Admin --> UC24
+Admin --> UC25
+
+Admin --> UC26
+Admin --> UC27
+Admin --> UC28
+Admin --> UC29
+Admin --> UC30
+Admin --> UC31
+Admin --> UC32
+
+Admin --> UC33
+Admin --> UC34
+Admin --> UC35
+
+' ========== RELACIONES ENCARGADO DE ALMACÉN ==========
+Encargado --> UC01
+Encargado --> UC02
+Encargado --> UC05
+
+Encargado --> UC06
+Encargado --> UC07
+Encargado --> UC08
+Encargado --> UC09
+
+Encargado --> UC14
+
+Encargado --> UC17
+Encargado --> UC18
+Encargado --> UC19
+Encargado --> UC20
+Encargado --> UC21
+Encargado --> UC22
+
+Encargado --> UC24
+Encargado --> UC25
+
+Encargado --> UC26
+Encargado --> UC27
+Encargado --> UC28
+Encargado --> UC31
+
+Encargado --> UC33
+
+' ========== RELACIONES USUARIO OPERATIVO ==========
+Usuario --> UC01
+Usuario --> UC02
+Usuario --> UC05
+
+Usuario --> UC08
+Usuario --> UC09
+
+Usuario --> UC18
+Usuario --> UC19
+
+Usuario --> UC24
+
+Usuario --> UC26
+
+' ========== RELACIONES INCLUDE Y EXTEND ==========
+UC03 ..> UC04 : <<include>>
+UC06 ..> UC08 : <<include>>
+UC07 ..> UC08 : <<include>>
+UC17 ..> UC19 : <<include>>
+UC18 ..> UC19 : <<include>>
+UC20 ..> UC19 : <<include>>
+
+UC10 ..> UC07 : <<extend>>
+UC16 ..> UC13 : <<extend>>
+
+UC24 ..> UC23 : <<include>>
+UC25 ..> UC23 : <<include>>
+
+UC31 ..> UC26 : <<extend>>
+UC31 ..> UC27 : <<extend>>
+UC31 ..> UC28 : <<extend>>
+
+note right of Admin
+  <b>Rol: Administrador</b>
+  - Acceso total al sistema
+  - Gestión de usuarios y permisos
+  - Configuración del sistema
+  - Todos los almacenes
+end note
+
+note right of Encargado
+  <b>Rol: Encargado de Almacén</b>
+  - Gestión de su almacén asignado
+  - Registro de movimientos
+  - Reportes operativos
+end note
+
+note right of Usuario
+  <b>Rol: Usuario Operativo</b>
+  - Consulta de información
+  - Registro de ventas
+  - Reportes básicos
+end note
+
+@enduml
