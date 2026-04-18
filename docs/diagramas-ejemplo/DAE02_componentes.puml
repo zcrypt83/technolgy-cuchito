@@ -1,0 +1,67 @@
+@startuml
+title Diagrama de Componentes\nTechnology Cuchito
+
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+package "Frontend React" {
+  component "Auth UI" as FEAuth
+  component "Productos UI" as FEProd
+  component "Inventario UI" as FEInv
+  component "Movimientos UI" as FEMov
+  component "Auditoria UI" as FEAud
+  component "Configuracion UI" as FEConf
+  component "api.ts (fetch client)" as FEApi
+  component "realtime.ts" as FERealtime
+  component "useLiveData" as FELive
+}
+
+package "Backend Express" {
+  component "Auth Routes/Controller" as BEAuth
+  component "Productos Routes/Controller" as BEProd
+  component "Inventario Routes/Controller" as BEInv
+  component "Movimientos Routes/Controller" as BEMov
+  component "Auditoria Routes/Controller" as BEAud
+  component "Configuracion Routes/Controller" as BEConf
+  component "Auth Middleware + Role Check" as BEMw
+  component "Servicios\nAuditoria/Configuracion" as BESvc
+}
+
+package "Persistencia" {
+  database "PostgreSQL" as PG
+  component "Redis" as Redis
+  artifact "admin-settings.json" as Settings
+}
+
+FEAuth --> FEApi
+FEProd --> FEApi
+FEInv --> FEApi
+FEMov --> FEApi
+FEAud --> FEApi
+FEConf --> FEApi
+
+FEApi --> BEMw
+BEMw --> BEAuth
+BEMw --> BEProd
+BEMw --> BEInv
+BEMw --> BEMov
+BEMw --> BEAud
+BEMw --> BEConf
+
+BEProd --> PG
+BEInv --> PG
+BEMov --> PG
+BEAud --> PG
+BEConf --> BESvc
+BESvc --> Settings
+BESvc --> PG
+BESvc --> Redis
+
+FEMov --> FERealtime
+FEProd --> FERealtime
+FEInv --> FERealtime
+FEAud --> FERealtime
+FERealtime --> FELive
+FELive --> FEApi
+
+@enduml

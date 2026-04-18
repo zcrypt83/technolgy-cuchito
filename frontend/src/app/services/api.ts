@@ -241,19 +241,35 @@ const normalizeProveedor = (raw: AnyRecord = {}) => ({
   activo: toBool(raw.activo ?? raw.estado, true),
 });
 
-const mapProductoPayload = (producto: AnyRecord) => ({
-  codigo: producto.codigo ?? producto.sku,
-  nombre: producto.nombre,
-  descripcion: producto.descripcion,
-  categoriaId: producto.categoriaId ?? producto.categoria_id,
-  proveedorId: producto.proveedorId ?? producto.proveedor_id,
-  precioCompra: toNumber(producto.precioCompra ?? producto.precio_compra ?? producto.precio, 0),
-  precioVenta: toNumber(producto.precioVenta ?? producto.precio_venta ?? producto.precio, 0),
-  unidadMedida: producto.unidadMedida ?? producto.unidad_medida ?? 'unidad',
-  stockMinimo: toNumber(producto.stockMinimo ?? producto.stock_minimo, 0),
-  stockMaximo: toNumber(producto.stockMaximo ?? producto.stock_maximo, 0),
-  estado: toBool(producto.estado ?? producto.activo, true),
-});
+const mapProductoPayload = (producto: AnyRecord) => {
+  const payload: AnyRecord = {
+    codigo: producto.codigo ?? producto.sku,
+    nombre: producto.nombre,
+    descripcion: producto.descripcion,
+    categoriaId: producto.categoriaId ?? producto.categoria_id,
+    proveedorId: producto.proveedorId ?? producto.proveedor_id,
+    precioCompra: toNumber(producto.precioCompra ?? producto.precio_compra ?? producto.precio, 0),
+    precioVenta: toNumber(producto.precioVenta ?? producto.precio_venta ?? producto.precio, 0),
+    unidadMedida: producto.unidadMedida ?? producto.unidad_medida ?? 'unidad',
+    stockMinimo: toNumber(producto.stockMinimo ?? producto.stock_minimo, 0),
+    stockMaximo: toNumber(producto.stockMaximo ?? producto.stock_maximo, 0),
+    estado: toBool(producto.estado ?? producto.activo, true),
+  };
+
+  const stockActualRaw = producto.stockActual ?? producto.stock_actual ?? producto.stockInicial ?? producto.stock_inicial;
+  const almacenIdRaw = producto.almacenId ?? producto.almacen_id;
+  const hasAlmacen = almacenIdRaw !== undefined && almacenIdRaw !== null && almacenIdRaw !== '';
+
+  if (hasAlmacen) {
+    payload.almacenId = toNumber(almacenIdRaw, 0);
+  }
+
+  if (hasAlmacen && stockActualRaw !== undefined && stockActualRaw !== null && stockActualRaw !== '') {
+    payload.stockActual = toNumber(stockActualRaw, 0);
+  }
+
+  return payload;
+};
 
 const mapAlmacenPayload = (almacen: AnyRecord) => ({
   codigo: almacen.codigo,

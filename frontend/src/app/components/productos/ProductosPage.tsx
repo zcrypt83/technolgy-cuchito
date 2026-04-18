@@ -37,6 +37,7 @@ export const ProductosPage = () => {
   const [productos, setProductos] = useState<any[]>([]);
   const [categorias, setCategorias] = useState<any[]>([]);
   const [proveedores, setProveedores] = useState<any[]>([]);
+  const [almacenes, setAlmacenes] = useState<any[]>([]);
 
   // Estados para formulario
   const [formOpen, setFormOpen] = useState(false);
@@ -52,15 +53,17 @@ export const ProductosPage = () => {
   const loadData = async (showLoader = true) => {
     try {
       if (showLoader) setLoading(true);
-      const [productosRes, categoriasRes, proveedoresRes] = await Promise.all([
+      const [productosRes, categoriasRes, proveedoresRes, almacenesRes] = await Promise.all([
         api.getProductos({ limit: 1000 }),
         api.getCategorias(),
         api.getProveedores(),
+        api.getAlmacenes(),
       ]);
 
       setProductos(productosRes.data || productosRes);
       setCategorias(categoriasRes.data || categoriasRes);
       setProveedores(proveedoresRes.data || proveedoresRes);
+      setAlmacenes((almacenesRes.data || almacenesRes).filter((a: any) => a.activo !== false));
     } catch (error) {
       console.error('Error al cargar productos:', error);
       toast.error('Error al cargar productos');
@@ -113,7 +116,7 @@ export const ProductosPage = () => {
       handleCloseForm();
     } catch (error: any) {
       console.error('Error al guardar producto:', error);
-      toast.error(error.response?.data?.message || 'Error al guardar producto');
+      toast.error(error?.message || 'Error al guardar producto');
     } finally {
       setFormLoading(false);
     }
@@ -399,6 +402,7 @@ export const ProductosPage = () => {
         producto={editingProducto}
         categorias={categorias}
         proveedores={proveedores}
+        almacenes={almacenes}
         loading={formLoading}
       />
 

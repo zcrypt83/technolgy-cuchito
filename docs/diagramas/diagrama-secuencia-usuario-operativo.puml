@@ -1,422 +1,66 @@
-@startuml Diagrama de Secuencia - Usuario Operativo
+@startuml
+title Secuencia - Usuario Operativo\nRegistro de salida y reflejo inmediato en paneles
 
-title Diagrama de Secuencia - Actor: Usuario Operativo\nSistema SaaS de Control de Inventario - Technology Cuchito
+actor "Usuario Operativo" as Operativo
+participant "Frontend React\n(Movimientos + Dashboard)" as UI
+participant "Realtime Bus\n(realtime.ts)" as Bus
+participant "API Express\n(/api/*)" as API
+participant "MovimientoController" as MovCtrl
+participant "AuditoriaService" as AuditSvc
+database "PostgreSQL" as DB
 
-actor "Usuario\nOperativo" as Usuario
-participant "Interfaz Web\n(Frontend)" as UI
-participant "API REST\n(Backend)" as API
-participant "Controlador\nAutenticación" as AuthCtrl
-participant "Controlador\nProductos" as ProdCtrl
-participant "Controlador\nInventario" as InvCtrl
-participant "Controlador\nReportes" as RepCtrl
-participant "Servicio\nNotificaciones" as NotifServ
-database "Base de Datos\nPostgreSQL" as DB
+== 1) Login ==
+Operativo -> UI: Ingresa email/contraseña
+UI -> API: POST /api/auth/login
+API --> UI: 200 OK + token
 
-== Caso de Uso 1: Iniciar Sesión ==
+== 2) Consulta inicial ==
+UI -> API: GET /api/productos
+API -> DB: SELECT productos
+DB --> API: productos
+API --> UI: 200 OK
 
-Usuario -> UI: 1. Accede al sistema\ne ingresa credenciales\n(usuario, contraseña)
-activate UI
+UI -> API: GET /api/inventario?almacenId=...
+API -> DB: SELECT inventario
+DB --> API: inventario
+API --> UI: 200 OK
 
-UI -> UI: 2. Validar formato\nde credenciales
+== 3) Registrar salida ==
+Operativo -> UI: Registra movimiento tipo "salida"
+UI -> API: POST /api/movimientos
+API -> MovCtrl: createMovimiento()
+MovCtrl -> MovCtrl: Validar rol\n(usuario_operativo => solo salida)
+MovCtrl -> DB: BEGIN
+MovCtrl -> DB: INSERT movimientos (tipo=salida)
+MovCtrl -> DB: SELECT inventario origen
 
-UI -> API: 3. POST /api/auth/login\n{username, password}
-activate API
-
-API -> AuthCtrl: 4. login(username, password)
-activate AuthCtrl
-
-AuthCtrl -> DB: 5. SELECT id, username, nombre,\nemail, password_hash, rol,\nactivo, ultimo_acceso\nFROM usuarios\nWHERE username = ?\nAND activo = true
-activate DB
-DB --> AuthCtrl: 6. Datos del usuario\n(rol: USUARIO_OPERATIVO)
-deactivate DB
-
-alt Usuario encontrado y activo
-    AuthCtrl -> AuthCtrl: 7. Verificar contraseña\nbcrypt.compare(password,\npassword_hash)
-    
-    alt Contraseña correcta
-        AuthCtrl -> AuthCtrl: 8. Generar token JWT\njwt.sign({\nuserId, username,\nrol: 'USUARIO_OPERATIVO'\n}, SECRET, {expiresIn: '8h'})
-        
-        AuthCtrl -> DB: 9. UPDATE usuarios\nSET ultimo_acceso = NOW()\nWHERE id = ?
-        activate DB
-        DB --> AuthCtrl: Usuario actualizado
-        deactivate DB
-        
-        AuthCtrl -> DB: 10. INSERT INTO auditoria\n(usuario_id, accion:\n'INICIO_SESION', ip, fecha)
-        activate DB
-        DB --> AuthCtrl: Auditoría registrada
-        deactivate DB
-        
-        AuthCtrl --> API: 11. {success: true,\ntoken, usuario: {id, nombre,\nrol, permisos}}
-        deactivate AuthCtrl
-        
-        API --> UI: 12. 200 OK\n{token, usuario}
-        deactivate API
-        
-        UI -> UI: 13. Almacenar token\nen localStorage
-        
-        UI -> UI: 14. Configurar permisos\nde interfaz según rol
-        
-        UI --> Usuario: 15. Redirigir a Dashboard\n(vista limitada para\nUsuario Operativo)
-        deactivate UI
-        
-    else Contraseña incorrecta
-        AuthCtrl -> DB: Registrar intento fallido
-        activate DB
-        DB --> AuthCtrl: Registrado
-        deactivate DB
-        
-        AuthCtrl --> API: Error: Credenciales\ninválidas
-        API --> UI: 401 Unauthorized
-        UI --> Usuario: "Usuario o contraseña\nincorrectos"
-    end
-    
-else Usuario no encontrado o inactivo
-    AuthCtrl --> API: Error: Usuario no existe\no está inactivo
-    API --> UI: 401 Unauthorized
-    UI --> Usuario: "Usuario o contraseña\nincorrectos"
+alt Stock suficiente
+  MovCtrl -> DB: UPDATE inventario (cantidad - salida)
+  MovCtrl -> DB: COMMIT
+  MovCtrl -> AuditSvc: registrarAuditoria(CREAR_MOVIMIENTO)
+  AuditSvc -> DB: INSERT auditoria
+  API --> UI: 201 Created
+else Stock insuficiente
+  MovCtrl -> DB: ROLLBACK
+  API --> UI: 400 Bad Request (Stock insuficiente)
 end
 
-== Caso de Uso 2: Consultar Productos ==
-
-Usuario -> UI: 1. Accede a\n"Consultar Productos"
-activate UI
-
-UI -> API: 2. GET /api/productos\n?activos=true\n(Authorization: Bearer token)
-activate API
-
-API -> API: 3. Verificar y decodificar\ntoken JWT
-
-API -> ProdCtrl: 4. listarProductos\n(filtros: {activos: true})
-activate ProdCtrl
-
-ProdCtrl -> DB: 5. SELECT p.id, p.codigo,\np.nombre, p.descripcion,\np.categoria, p.marca,\np.modelo, p.precio_venta,\np.imagen_url,\nCOALESCE(SUM(i.stock_actual), 0)\nas stock_total\nFROM productos p\nLEFT JOIN inventario i\nON p.id = i.producto_id\nWHERE p.activo = true\nGROUP BY p.id\nORDER BY p.nombre
-activate DB
-DB --> ProdCtrl: 6. Lista de productos\ncon stock total
-deactivate DB
-
-ProdCtrl --> API: 7. {productos: [...],\ntotal: count}
-deactivate ProdCtrl
-
-API --> UI: 8. 200 OK\n{productos, total}
-deactivate API
-
-UI -> UI: 9. Renderizar tabla/cards\nde productos
-
-UI --> Usuario: 10. Mostrar productos\ncon información básica
-deactivate UI
-
-== Caso de Uso 3: Buscar y Filtrar Productos ==
-
-Usuario -> UI: 1. Ingresa término de\nbúsqueda y/o aplica filtros\n(categoría, rango de precio)
-activate UI
-
-UI -> UI: 2. Validar entrada del usuario
-
-UI -> API: 3. GET /api/productos?\nbusqueda={termino}\n&categoria={cat}\n&precio_min={min}\n&precio_max={max}
-activate API
-
-API -> ProdCtrl: 4. buscarProductos(filtros)
-activate ProdCtrl
-
-ProdCtrl -> ProdCtrl: 5. Construir query SQL\ndinámicamente según filtros
-
-ProdCtrl -> DB: 6. SELECT p.*, SUM(i.stock)\nFROM productos p\nLEFT JOIN inventario i\nON p.id = i.producto_id\nWHERE p.activo = true\nAND (p.nombre LIKE '%termino%'\nOR p.codigo LIKE '%termino%'\nOR p.marca LIKE '%termino%')\nAND p.categoria = ?\nAND p.precio_venta\nBETWEEN ? AND ?\nGROUP BY p.id
-activate DB
-DB --> ProdCtrl: 7. Productos filtrados
-deactivate DB
-
-ProdCtrl --> API: 8. {productos_filtrados}
-deactivate ProdCtrl
-
-API --> UI: 9. 200 OK {productos}
-deactivate API
-
-UI --> Usuario: 10. Mostrar resultados\nde búsqueda/filtrado
-deactivate UI
-
-== Caso de Uso 4: Consultar Stock en Tiempo Real ==
-
-Usuario -> UI: 1. Selecciona producto\ny click "Ver Stock"
-activate UI
-
-UI -> API: 2. GET /api/productos\n/{producto_id}/stock
-activate API
-
-API -> InvCtrl: 3. obtenerStockProducto\n(producto_id)
-activate InvCtrl
-
-InvCtrl -> DB: 4. SELECT a.id, a.nombre,\na.direccion,\ni.stock_actual,\np.stock_minimo\nFROM almacenes a\nLEFT JOIN inventario i\nON a.id = i.almacen_id\nAND i.producto_id = ?\nJOIN productos p\nON p.id = ?\nWHERE a.activo = true\nORDER BY a.nombre
-activate DB
-DB --> InvCtrl: 5. Stock por almacén
-deactivate DB
-
-InvCtrl -> InvCtrl: 6. Calcular:\n- Stock total\n- Stock disponible\n- Estado (disponible/bajo/agotado)
-
-InvCtrl --> API: 7. {stock_por_almacen: [...],\nstock_total, estado}
-deactivate InvCtrl
-
-API --> UI: 8. 200 OK {datos_stock}
-deactivate API
-
-UI --> Usuario: 9. Mostrar tabla con stock\npor almacén y total\n+ Indicadores visuales
-deactivate UI
-
-== Caso de Uso 5: Registrar Salida por Venta ==
-
-Usuario -> UI: 1. Accede a "Registrar Venta"
-activate UI
-
-UI -> API: 2. GET /api/almacenes\n?activos=true
-activate API
-API -> DB: 3. Obtener almacenes activos
-activate DB
-DB --> API: 4. Lista de almacenes
-deactivate DB
-API --> UI: 5. {almacenes}
-deactivate API
-
-UI --> Usuario: 6. Mostrar selector\nde almacén
-deactivate UI
-
-Usuario -> UI: 7. Selecciona almacén
-activate UI
-
-UI -> API: 8. GET /api/inventario/stock\n?almacen_id={seleccionado}
-activate API
-API -> DB: 9. Productos con stock > 0
-activate DB
-DB --> API: 10. Productos disponibles
-deactivate DB
-API --> UI: 11. {productos_stock}
-deactivate API
-
-UI --> Usuario: 12. Mostrar productos\ndisponibles en almacén
-deactivate UI
-
-Usuario -> UI: 13. Agrega productos al\ncarrito de venta\n(producto, cantidad)
-activate UI
-
-UI -> UI: 14. Validar:\n- cantidad <= stock_disponible\n- cantidad > 0
-
-UI -> UI: 15. Calcular total de venta
-
-UI --> Usuario: 16. Mostrar resumen\nde venta
-deactivate UI
-
-Usuario -> UI: 17. Ingresa datos del cliente\ny confirma venta
-activate UI
-
-UI -> UI: 18. Validar datos completos
-
-UI -> API: 19. POST /api/ventas\n{almacen_id, cliente: {...},\nproductos: [{id, cantidad,\nprecio}], total, tipo_pago}
-activate API
-
-API -> InvCtrl: 20. registrarVenta(datos)
-activate InvCtrl
-
-InvCtrl -> DB: 21. BEGIN TRANSACTION
-activate DB
-
-' Registrar la venta
-InvCtrl -> DB: 22. INSERT INTO ventas\n(fecha, cliente_nombre,\ncliente_documento, total,\ntipo_pago, usuario_id,\nestado: 'COMPLETADA')
-DB --> InvCtrl: 23. ID de venta
-
-loop Para cada producto vendido
-    ' Registrar detalle de venta
-    InvCtrl -> DB: 24a. INSERT INTO\nventa_detalles\n(venta_id, producto_id,\ncantidad, precio_unitario,\nsubtotal)
-    DB --> InvCtrl: Detalle insertado
-    
-    ' Verificar stock disponible
-    InvCtrl -> DB: 24b. SELECT stock_actual\nFROM inventario\nWHERE producto_id = ?\nAND almacen_id = ?\nFOR UPDATE
-    DB --> InvCtrl: stock_actual
-    
-    alt stock_actual >= cantidad
-        ' Registrar movimiento de salida
-        InvCtrl -> DB: 25a. INSERT INTO movimientos\n(tipo: 'SALIDA',\nsubtipo: 'VENTA',\nproducto_id, almacen_id,\ncantidad, precio,\nusuario_id, venta_id,\nfecha: NOW())
-        DB --> InvCtrl: ID movimiento
-        
-        ' Actualizar stock
-        InvCtrl -> DB: 25b. UPDATE inventario\nSET stock_actual =\nstock_actual - cantidad\nWHERE producto_id = ?\nAND almacen_id = ?
-        DB --> InvCtrl: Stock actualizado
-        
-        ' Verificar si alcanzó stock mínimo
-        InvCtrl -> DB: 26. SELECT i.stock_actual,\np.stock_minimo, p.nombre\nFROM inventario i\nJOIN productos p\nON i.producto_id = p.id\nWHERE i.producto_id = ?\nAND i.almacen_id = ?
-        DB --> InvCtrl: Stock actual vs mínimo
-        
-        alt stock_actual <= stock_minimo
-            InvCtrl -> NotifServ: 27. generarAlerta\nStockMinimo(producto,\nalmacen, stock_actual,\nstock_minimo)
-            activate NotifServ
-            
-            NotifServ -> DB: 28. INSERT INTO alertas\n(tipo: 'STOCK_MINIMO',\nproducto_id, almacen_id,\nstock_actual, stock_minimo,\nfecha: NOW())
-            activate DB
-            DB --> NotifServ: Alerta creada
-            deactivate DB
-            
-            NotifServ -> DB: 29. Obtener usuarios a notificar\n(Admin + Encargado almacén)
-            activate DB
-            DB --> NotifServ: Lista usuarios
-            deactivate DB
-            
-            NotifServ -> DB: 30. INSERT INTO\nnotificaciones (múltiples)
-            activate DB
-            DB --> NotifServ: Notificaciones creadas
-            deactivate DB
-            
-            NotifServ --> InvCtrl: Alertas generadas
-            deactivate NotifServ
-        end
-        
-    else stock_actual < cantidad
-        InvCtrl -> DB: ROLLBACK TRANSACTION
-        InvCtrl --> API: Error: Stock insuficiente\npara producto X
-        deactivate InvCtrl
-        API --> UI: 400 Bad Request\n{error: "Stock insuficiente"}
-        deactivate API
-        UI --> Usuario: "Error: Stock insuficiente\npara completar la venta"
-        deactivate UI
-    end
-end
-
-' Registrar auditoría
-InvCtrl -> DB: 31. INSERT INTO auditoria\n(usuario_id, accion:\n'REGISTRO_VENTA',\ntabla: 'ventas',\nregistro_id: venta_id,\nfecha: NOW())
-DB --> InvCtrl: Auditoría registrada
-
-InvCtrl -> DB: 32. COMMIT TRANSACTION
-deactivate DB
-
-InvCtrl --> API: 33. {venta_registrada,\nid_venta, alertas: [...]}
-deactivate InvCtrl
-
-API --> UI: 34. 201 Created\n{venta, alertas}
-deactivate API
-
-UI --> Usuario: 35. "Venta registrada\nexitosamente"\n+ Comprobante de venta\n+ Alertas de stock bajo (si hay)
-deactivate UI
-
-== Caso de Uso 6: Recibir Notificaciones ==
-
-Usuario -> UI: 1. Ingresa al sistema\n(ya autenticado)
-activate UI
-
-UI -> API: 2. GET /api/notificaciones\n/no-leidas\n(Authorization: Bearer token)
-activate API
-
-API -> NotifServ: 3. obtenerNotificaciones\nNoLeidas(usuario_id)
-activate NotifServ
-
-NotifServ -> DB: 4. SELECT n.id, n.tipo,\nn.mensaje, n.fecha,\nn.leida, n.datos_adicionales\nFROM notificaciones n\nWHERE n.usuario_id = ?\nAND n.leida = false\nORDER BY n.fecha DESC\nLIMIT 50
-activate DB
-DB --> NotifServ: 5. Notificaciones no leídas
-deactivate DB
-
-NotifServ --> API: 6. {notificaciones: [...],\ntotal_no_leidas: count}
-deactivate NotifServ
-
-API --> UI: 7. 200 OK\n{notificaciones, total}
-deactivate API
-
-UI -> UI: 8. Mostrar badge/icono\ncon número de notificaciones
-
-UI --> Usuario: 9. Indicador visual de\nnotificaciones nuevas
-deactivate UI
-
-Usuario -> UI: 10. Click en icono de\nnotificaciones
-activate UI
-
-UI --> Usuario: 11. Mostrar panel de\nnotificaciones\n(alertas de stock, etc.)
-deactivate UI
-
-Usuario -> UI: 12. Click en notificación\npara ver detalles
-activate UI
-
-UI -> API: 13. PUT /api/notificaciones\n/{id}/marcar-leida
-activate API
-
-API -> NotifServ: 14. marcarComoLeida\n(notificacion_id, usuario_id)
-activate NotifServ
-
-NotifServ -> DB: 15. UPDATE notificaciones\nSET leida = true,\nfecha_lectura = NOW()\nWHERE id = ?\nAND usuario_id = ?
-activate DB
-DB --> NotifServ: Notificación actualizada
-deactivate DB
-
-NotifServ --> API: {success: true}
-deactivate NotifServ
-
-API --> UI: 16. 200 OK
-deactivate API
-
-UI --> Usuario: 17. Mostrar detalles de\nnotificación + actualizar\ncontador
-deactivate UI
-
-== Caso de Uso 7: Generar Reporte de Stock ==
-
-Usuario -> UI: 1. Accede a "Reportes"\n> "Stock Actual"
-activate UI
-
-UI -> API: 2. GET /api/reportes/stock\n?simple=true
-activate API
-
-API -> RepCtrl: 3. generarReporteStock\nSimple()
-activate RepCtrl
-
-RepCtrl -> DB: 4. SELECT p.codigo, p.nombre,\np.categoria, p.marca,\nSUM(i.stock_actual) as stock_total,\np.stock_minimo,\np.precio_venta,\nCASE\n  WHEN SUM(i.stock_actual) = 0\n    THEN 'AGOTADO'\n  WHEN SUM(i.stock_actual) <= p.stock_minimo\n    THEN 'BAJO'\n  ELSE 'DISPONIBLE'\nEND as estado\nFROM productos p\nLEFT JOIN inventario i\nON p.id = i.producto_id\nWHERE p.activo = true\nGROUP BY p.id\nORDER BY p.nombre
-activate DB
-DB --> RepCtrl: 5. Stock consolidado\npor producto
-deactivate DB
-
-RepCtrl -> RepCtrl: 6. Calcular estadísticas:\n- Total productos\n- Productos con stock\n- Productos agotados\n- Productos en nivel bajo\n- Valor total inventario
-
-RepCtrl --> API: 7. {reporte_stock,\nestadisticas}
-deactivate RepCtrl
-
-API --> UI: 8. 200 OK {reporte}
-deactivate API
-
-UI -> UI: 9. Renderizar tabla con:\n- Colores por estado\n- Ordenamiento\n- Búsqueda local
-
-UI --> Usuario: 10. Mostrar reporte\nde stock con indicadores\nvisuales
-deactivate UI
-
-Usuario -> UI: 11. Click "Exportar a PDF"
-activate UI
-
-UI -> UI: 12. Generar PDF en cliente\n(usando librería jsPDF)
-
-UI --> Usuario: 13. Descargar archivo\n"reporte_stock_FECHA.pdf"
-deactivate UI
-
-== Caso de Uso 8: Cerrar Sesión ==
-
-Usuario -> UI: 1. Click en "Cerrar Sesión"
-activate UI
-
-UI -> UI: 2. Confirmar cierre de sesión
-
-Usuario -> UI: 3. Confirma
-
-UI -> API: 4. POST /api/auth/logout\n(Authorization: Bearer token)
-activate API
-
-API -> AuthCtrl: 5. logout(usuario_id)
-activate AuthCtrl
-
-AuthCtrl -> DB: 6. INSERT INTO auditoria\n(usuario_id, accion:\n'CIERRE_SESION',\nfecha: NOW())
-activate DB
-DB --> AuthCtrl: Auditoría registrada
-deactivate DB
-
-AuthCtrl --> API: 7. {success: true}
-deactivate AuthCtrl
-
-API --> UI: 8. 200 OK
-deactivate API
-
-UI -> UI: 9. Eliminar token de\nlocalStorage
-
-UI -> UI: 10. Limpiar estado de\naplicación
-
-UI --> Usuario: 11. Redirigir a página\nde inicio de sesión
-deactivate UI
+== 4) Reflejo inmediato sin refrescar página ==
+UI -> Bus: emitDataChanged(endpoint=/movimientos, method=POST)
+Bus -> UI: evento local/storage
+UI -> API: GET /api/movimientos?limit=100
+API -> DB: SELECT movimientos recientes
+DB --> API: movimientos
+API --> UI: 200 OK
+
+UI -> API: GET /api/inventario?almacenId=...
+API -> DB: SELECT inventario actualizado
+DB --> API: inventario
+API --> UI: 200 OK
+
+UI -> API: GET /api/auditoria?limit=...
+API -> DB: SELECT auditoría visible por rol
+DB --> API: auditoría
+API --> UI: 200 OK
 
 @enduml

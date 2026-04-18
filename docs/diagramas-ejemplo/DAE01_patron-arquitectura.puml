@@ -1,0 +1,51 @@
+@startuml
+title Diagrama conceptual de arquitectura\nTechnology Cuchito
+
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Usuario Web" as User
+
+rectangle "Capa de Presentacion" as Presentacion {
+  component "Frontend\nReact + Vite" as FE
+}
+
+rectangle "Capa de Integracion" as Integracion {
+  component "API REST\n/api/*" as API
+}
+
+rectangle "Capa de Logica de Negocio" as Negocio {
+  component "Express Controllers" as Ctrl
+  component "Servicios de negocio\n(inventario, auditoria,\nconfiguracion)" as Svc
+}
+
+rectangle "Capa de Datos" as Datos {
+  database "PostgreSQL" as PG
+  component "Redis Cache" as Redis
+  artifact "admin-settings.json" as Settings
+}
+
+rectangle "Infraestructura" as Infra {
+  component "Render Web Service\nBackend" as RenderBE
+  component "Render Static Site\nFrontend" as RenderFE
+  component "Render Postgres" as RenderPG
+  component "Render Key Value" as RenderKV
+}
+
+User --> FE
+FE --> API
+API --> Ctrl
+Ctrl --> Svc
+Svc --> PG
+Svc --> Redis
+Svc --> Settings
+PG --> Svc
+Svc --> API
+API --> FE
+
+RenderFE .. FE
+RenderBE .. API
+RenderPG .. PG
+RenderKV .. Redis
+
+@enduml

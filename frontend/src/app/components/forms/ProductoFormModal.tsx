@@ -5,8 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import type { Producto, Categoria, Proveedor } from '../../types';
+import type { Producto, Categoria, Proveedor, Almacen } from '../../types';
 
 interface ProductoFormData {
   sku: string;
@@ -20,6 +19,8 @@ interface ProductoFormData {
   precio_venta: number;
   stock_minimo: number;
   stock_maximo: number;
+  almacen_id?: number;
+  stock_actual?: number;
 }
 
 interface ProductoFormModalProps {
@@ -29,6 +30,7 @@ interface ProductoFormModalProps {
   producto?: Producto | null;
   categorias: Categoria[];
   proveedores: Proveedor[];
+  almacenes: Almacen[];
   loading?: boolean;
 }
 
@@ -39,12 +41,38 @@ export function ProductoFormModal({
   producto,
   categorias,
   proveedores,
+  almacenes,
   loading = false
 }: ProductoFormModalProps) {
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<ProductoFormData>();
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<ProductoFormData>();
+  const selectedAlmacenId = Number(watch('almacen_id') || 0);
+
+  const findInventarioCantidad = (item: any, almacenId?: number) => {
+    const inventarios = Array.isArray(item?.inventarios) ? item.inventarios : [];
+    if (!inventarios.length) return Number(item?.stock_actual || 0);
+
+    if (!almacenId) {
+      return Number(inventarios[0]?.cantidad || 0);
+    }
+
+    const inventario = inventarios.find((inv: any) => {
+      const invAlmacenId = Number(inv?.almacenId ?? inv?.almacen_id ?? inv?.almacen?.id ?? 0);
+      return invAlmacenId === Number(almacenId);
+    });
+
+    return Number(inventario?.cantidad || 0);
+  };
 
   useEffect(() => {
     if (producto) {
+      const inventarios = Array.isArray((producto as any).inventarios) ? (producto as any).inventarios : [];
+      const defaultAlmacenId = Number(
+        inventarios[0]?.almacenId ??
+        inventarios[0]?.almacen_id ??
+        inventarios[0]?.almacen?.id ??
+        0
+      );
+
       reset({
         sku: producto.sku,
         nombre: producto.nombre,
@@ -57,6 +85,8 @@ export function ProductoFormModal({
         precio_venta: Number(producto.precio_venta || 0),
         stock_minimo: producto.stock_minimo,
         stock_maximo: producto.stock_maximo,
+        almacen_id: defaultAlmacenId || undefined,
+        stock_actual: findInventarioCantidad(producto, defaultAlmacenId),
       });
     } else {
       reset({
@@ -71,9 +101,18 @@ export function ProductoFormModal({
         precio_venta: 0,
         stock_minimo: 10,
         stock_maximo: 100,
+        almacen_id: undefined,
+        stock_actual: 0,
       });
     }
   }, [producto, reset, open]);
+
+  useEffect(() => {
+    if (!producto) return;
+    if (!selectedAlmacenId) return;
+
+    setValue('stock_actual', findInventarioCantidad(producto, selectedAlmacenId));
+  }, [producto, selectedAlmacenId, setValue]);
 
   const handleFormSubmit = (data: ProductoFormData) => {
     onSubmit(data);
@@ -324,6 +363,53 @@ export function ProductoFormModal({
                 <p className="text-red-600 text-sm flex items-center gap-1">
                   <AlertCircle className="h-4 w-4" />
                   {errors.stock_maximo.message}
+                </p>
+              )}
+            </div>
+
+            {/* Almacén para stock */}
+            <div className="space-y-2">
+              <Label htmlFor="almacen_id">Almacén para stock</Label>
+              <select
+                {...register('almacen_id', { valueAsNumber: true })}
+                className={`w-full px-3 py-2 border rounded-md ${errors.almacen_id ? 'border-red-500' : 'border-gray-300'}`}
+              >
+                <option value="">Seleccionar almacén...</option>
+                {almacenes.map((alm) => (
+                  <option key={alm.id} value={alm.id}>
+                    {alm.nombre} ({alm.codigo})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500">
+                Selecciona el almacén donde se registrará el stock.
+              </p>
+            </div>
+
+            {/* Stock actual/inicial */}
+            <div className="space-y-2">
+              <Label htmlFor="stock_actual">Stock {producto ? 'Actual' : 'Inicial'}</Label>
+              <Input
+                id="stock_actual"
+                type="number"
+                {...register('stock_actual', {
+                  valueAsNumber: true,
+                  min: { value: 0, message: 'El stock no puede ser negativo' },
+                  validate: (value, formData) => {
+                    if (value === undefined || value === null || Number.isNaN(value)) return true;
+                    if (value > 0 && !formData.almacen_id) {
+                      return 'Selecciona un almacén para asignar stock';
+                    }
+                    return true;
+                  }
+                })}
+                placeholder="0"
+                className={errors.stock_actual ? 'border-red-500' : ''}
+              />
+              {errors.stock_actual && (
+                <p className="text-red-600 text-sm flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" />
+                  {errors.stock_actual.message}
                 </p>
               )}
             </div>

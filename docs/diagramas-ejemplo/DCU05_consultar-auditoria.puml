@@ -1,0 +1,13 @@
+@startuml
+title DCU05_Consultar_Auditoria
+
+left to right direction
+actor "Administrador" as Admin
+
+rectangle "Sistema" {
+  usecase "Consultar Auditoria" as UCAud
+}
+
+Admin --> UCAud
+
+@enduml

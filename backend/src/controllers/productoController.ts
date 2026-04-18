@@ -6,8 +6,56 @@ import Proveedor from '../models/Proveedor';
 import Inventario from '../models/Inventario';
 import Almacen from '../models/Almacen';
 import { AppError } from '../middleware/errorHandler';
-import { getAccessibleWarehouseIds } from '../utils/warehouseAccess';
+import sequelize from '../config/database';
+import { canAccessWarehouse, getAccessibleWarehouseIds } from '../utils/warehouseAccess';
 import { registrarAuditoria } from '../services/auditoriaService';
+
+const parseOptionalNumber = (value: unknown): number | null => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeStockPayload = (body: any) => {
+  const stockRaw =
+    body?.stockActual ??
+    body?.stock_actual ??
+    body?.stockInicial ??
+    body?.stock_inicial;
+
+  const almacenRaw = body?.almacenId ?? body?.almacen_id;
+
+  const stock = parseOptionalNumber(stockRaw);
+  const almacenId = parseOptionalNumber(almacenRaw);
+
+  return {
+    stock,
+    almacenId,
+    hasStockField:
+      stockRaw !== undefined ||
+      body?.stock_actual !== undefined ||
+      body?.stockInicial !== undefined ||
+      body?.stock_inicial !== undefined
+  };
+};
+
+const extractProductoPayload = (body: any) => ({
+  codigo: body?.codigo,
+  nombre: body?.nombre,
+  descripcion: body?.descripcion,
+  categoriaId: body?.categoriaId,
+  proveedorId: body?.proveedorId,
+  precioCompra: body?.precioCompra,
+  precioVenta: body?.precioVenta,
+  unidadMedida: body?.unidadMedida ?? 'unidad',
+  stockMinimo: body?.stockMinimo,
+  stockMaximo: body?.stockMaximo,
+  imagen: body?.imagen,
+  estado: body?.estado
+});
 
 export const getProductos = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -114,26 +162,93 @@ export const getProductoById = async (req: Request, res: Response): Promise<void
 };
 
 export const createProducto = async (req: Request, res: Response): Promise<void> => {
+  const transaction = await sequelize.transaction();
+
   try {
-    const producto = await Producto.create(req.body);
+    const reqAny = req as any;
+    const accessibleWarehouseIds = await getAccessibleWarehouseIds(reqAny.usuario);
+    const { stock, almacenId, hasStockField } = normalizeStockPayload(req.body);
+    const productoPayload = extractProductoPayload(req.body);
+
+    if (hasStockField && (stock === null || !Number.isInteger(stock) || stock < 0)) {
+      throw new AppError('El stock debe ser un número entero mayor o igual a 0', 400);
+    }
+
+    if (almacenId !== null && (!Number.isInteger(almacenId) || almacenId < 1)) {
+      throw new AppError('Almacén inválido para registrar stock', 400);
+    }
+
+    let warehouseForStock = almacenId;
+
+    if (warehouseForStock === null && hasStockField && stock !== null && stock > 0) {
+      if (accessibleWarehouseIds && accessibleWarehouseIds.length === 1) {
+        warehouseForStock = accessibleWarehouseIds[0];
+      } else {
+        throw new AppError('Selecciona un almacén para registrar stock inicial', 400);
+      }
+    }
+
+    if (warehouseForStock !== null && !canAccessWarehouse(warehouseForStock, accessibleWarehouseIds)) {
+      throw new AppError('No tienes permisos sobre el almacén seleccionado', 403);
+    }
+
+    const producto = await Producto.create(productoPayload as any, { transaction });
+
+    if (warehouseForStock !== null) {
+      const [inventario] = await Inventario.findOrCreate({
+        where: { productoId: producto.id, almacenId: warehouseForStock },
+        defaults: {
+          productoId: producto.id,
+          almacenId: warehouseForStock,
+          cantidad: 0,
+          ultimaActualizacion: new Date()
+        },
+        transaction
+      });
+
+      if (hasStockField && stock !== null) {
+        await inventario.update(
+          {
+            cantidad: stock,
+            ultimaActualizacion: new Date()
+          },
+          { transaction }
+        );
+      }
+    }
+
+    await transaction.commit();
+
     await registrarAuditoria({
-      req: req as any,
+      req: reqAny,
       accion: 'CREAR',
       entidad: 'productos',
       entidadId: producto.id,
-      detalles: `Se creó producto ${producto.nombre} (${producto.codigo})`
+      detalles: `Se creó producto ${producto.nombre} (${producto.codigo})${warehouseForStock ? ` con stock ${stock ?? 0} en almacén ${warehouseForStock}` : ''}`
     });
     res.status(201).json(producto);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al crear producto' });
+  } catch (error: any) {
+    if (!(transaction as any).finished) {
+      await transaction.rollback();
+    }
+
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: 'Error al crear producto' });
+    }
   }
 };
 
 export const updateProducto = async (req: Request, res: Response): Promise<void> => {
+  const transaction = await sequelize.transaction();
+
   try {
     const { id } = req.params;
-    const accessibleWarehouseIds = await getAccessibleWarehouseIds((req as any).usuario);
-    const producto = await Producto.findByPk(id);
+    const reqAny = req as any;
+    const accessibleWarehouseIds = await getAccessibleWarehouseIds(reqAny.usuario);
+    const { stock, almacenId, hasStockField } = normalizeStockPayload(req.body);
+    const producto = await Producto.findByPk(id, { transaction });
 
     if (!producto) {
       throw new AppError('Producto no encontrado', 404);
@@ -152,16 +267,69 @@ export const updateProducto = async (req: Request, res: Response): Promise<void>
       }
     }
 
-    await producto.update(req.body);
+    if (hasStockField && (stock === null || !Number.isInteger(stock) || stock < 0)) {
+      throw new AppError('El stock debe ser un número entero mayor o igual a 0', 400);
+    }
+
+    let warehouseForStock = almacenId;
+
+    if (warehouseForStock === null && hasStockField) {
+      if (accessibleWarehouseIds && accessibleWarehouseIds.length === 1) {
+        warehouseForStock = accessibleWarehouseIds[0];
+      } else {
+        throw new AppError('Selecciona un almacén para actualizar stock', 400);
+      }
+    }
+
+    if (warehouseForStock !== null && !canAccessWarehouse(warehouseForStock, accessibleWarehouseIds)) {
+      throw new AppError('No tienes permisos sobre el almacén seleccionado', 403);
+    }
+
+    const productoPayload = extractProductoPayload(req.body);
+    const fieldsToUpdate = Object.fromEntries(
+      Object.entries(productoPayload).filter(([, value]) => value !== undefined)
+    );
+
+    if (Object.keys(fieldsToUpdate).length > 0) {
+      await producto.update(fieldsToUpdate, { transaction });
+    }
+
+    if (hasStockField && warehouseForStock !== null && stock !== null) {
+      const [inventario] = await Inventario.findOrCreate({
+        where: { productoId: producto.id, almacenId: warehouseForStock },
+        defaults: {
+          productoId: producto.id,
+          almacenId: warehouseForStock,
+          cantidad: 0,
+          ultimaActualizacion: new Date()
+        },
+        transaction
+      });
+
+      await inventario.update(
+        {
+          cantidad: stock,
+          ultimaActualizacion: new Date()
+        },
+        { transaction }
+      );
+    }
+
+    await transaction.commit();
+
     await registrarAuditoria({
-      req: req as any,
+      req: reqAny,
       accion: 'ACTUALIZAR',
       entidad: 'productos',
       entidadId: producto.id,
-      detalles: `Se actualizó producto ${producto.nombre}. Campos: ${Object.keys(req.body || {}).join(', ') || 'sin cambios explícitos'}`
+      detalles: `Se actualizó producto ${producto.nombre}. Campos: ${Object.keys(req.body || {}).join(', ') || 'sin cambios explícitos'}${hasStockField ? `; stock=${stock} almacén=${warehouseForStock}` : ''}`
     });
     res.json(producto);
   } catch (error: any) {
+    if (!(transaction as any).finished) {
+      await transaction.rollback();
+    }
+
     if (error instanceof AppError) {
       res.status(error.statusCode).json({ error: error.message });
     } else {

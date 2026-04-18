@@ -1,0 +1,17 @@
+@startuml
+title DCU03_Registrar_Movimiento
+
+left to right direction
+actor "Usuario Operativo" as Op
+actor "Encargado de Almacen" as Enc
+actor "Administrador" as Admin
+
+rectangle "Sistema" {
+  usecase "Registrar Movimiento" as UCMov
+}
+
+Op --> UCMov
+Enc --> UCMov
+Admin --> UCMov
+
+@enduml

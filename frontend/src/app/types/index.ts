@@ -33,6 +33,7 @@ export interface AuthContextType {
 export interface Producto {
   id: number;
   codigo: string;
+  sku?: string;
   nombre: string;
   descripcion: string;
   categoria_id: number;
@@ -40,9 +41,18 @@ export interface Producto {
   modelo: string;
   precio_compra: number;
   precio_venta: number;
+  precio?: number;
   stock_minimo: number;
   stock_maximo: number;
+  stock_actual?: number;
   proveedor_id: number;
+  inventarios?: Array<{
+    id?: number;
+    almacenId?: number;
+    almacen_id?: number;
+    cantidad?: number;
+    almacen?: Almacen;
+  }>;
   imagen_url: string | null;
   activo: boolean;
 }

@@ -1,0 +1,13 @@
+@startuml
+title DCU02_Administrar_Productos
+
+left to right direction
+actor "Administrador / Encargado" as Actor
+
+rectangle "Sistema" {
+  usecase "Administrar Productos" as UC
+}
+
+Actor --> UC
+
+@enduml

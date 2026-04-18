@@ -290,25 +290,25 @@ technology-cuchito-inventory/
 
 ## 📊 Diagramas UML
 
-El proyecto incluye diagramas completos en PlantUML:
+El proyecto incluye diagramas actualizados en PlantUML:
 
 ### 1. **Diagrama de Casos de Uso**
 - Casos de uso por actor (Administrador, Encargado, Usuario Operativo)
 - Relaciones include y extend
-- Archivo: `/diagrama-casos-uso.puml`
+- Archivo: `/docs/diagramas/diagrama-casos-uso.puml`
 
 ### 2. **Diagramas de Secuencia**
 - Por cada actor del sistema
 - Flujos completos de interacción
 - Archivos:
-  - `/diagrama-secuencia-administrador.puml`
-  - `/diagrama-secuencia-encargado-almacen.puml`
-  - `/diagrama-secuencia-usuario-operativo.puml`
+  - `/docs/diagramas/diagrama-secuencia-administrador.puml`
+  - `/docs/diagramas/diagrama-secuencia-encargado-almacen.puml`
+  - `/docs/diagramas/diagrama-secuencia-usuario-operativo.puml`
 
 ### 3. **Diagrama de Entidad-Relación**
 - Modelo completo de base de datos
 - Relaciones y cardinalidades
-- Archivo: `/diagrama-entidad-relacion.puml`
+- Archivo: `/docs/diagramas/diagrama-entidad-relacion.puml`
 
 ---
 

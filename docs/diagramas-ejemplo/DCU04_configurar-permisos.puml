@@ -1,0 +1,13 @@
+@startuml
+title DCU04_Configurar_Permisos
+
+left to right direction
+actor "Administrador" as Admin
+
+rectangle "Sistema" {
+  usecase "Configurar Permisos y Acciones" as UCConf
+}
+
+Admin --> UCConf
+
+@enduml

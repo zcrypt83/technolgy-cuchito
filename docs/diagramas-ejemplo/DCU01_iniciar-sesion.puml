@@ -1,0 +1,13 @@
+@startuml
+title DCU01_Iniciar_Sesion
+
+left to right direction
+actor "Usuario" as User
+
+rectangle "Sistema" {
+  usecase "Iniciar Sesion" as Login
+}
+
+User --> Login
+
+@enduml

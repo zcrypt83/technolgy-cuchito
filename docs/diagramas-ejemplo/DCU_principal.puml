@@ -1,0 +1,35 @@
+@startuml
+title DCU_Principal\nTechnology Cuchito
+
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Administrador" as Admin
+actor "Encargado de Almacen" as Enc
+actor "Usuario Operativo" as Op
+
+rectangle "Sistema SaaS de Inventario" {
+  usecase "DCU01\nIniciar Sesion" as UC01
+  usecase "DCU02\nAdministrar Productos" as UC02
+  usecase "DCU03\nRegistrar Movimiento" as UC03
+  usecase "DCU04\nConfigurar Permisos" as UC04
+  usecase "DCU05\nConsultar Auditoria" as UC05
+}
+
+Admin --> UC01
+Enc --> UC01
+Op --> UC01
+
+Admin --> UC02
+Enc --> UC02
+
+Admin --> UC03
+Enc --> UC03
+Op --> UC03
+
+Admin --> UC04
+Admin --> UC05
+
+UC04 ..> UC05 : <<include>>
+
+@enduml
